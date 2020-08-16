@@ -225,7 +225,7 @@ if __name__ == '__main__':
                 words = mgen.generate(256)
                 print("KEEP THIS PRIVATE: {}".format(words))
             else:
-                words = getpass('Enter the mnemonic: ')
+                words = getpass('Enter the mnemonic: ').strip()
                 if not args.custom_words:
                     mchecker = mnemonic.Mnemonic(args.lang)
                     if not mchecker.check(words):
