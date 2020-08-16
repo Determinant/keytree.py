@@ -37,21 +37,20 @@ import sys
 basedir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, basedir + "/freezed_deps")
 
+import re
 import argparse
 import hashlib
 import hmac
 import unicodedata
-import bech32
 from getpass import getpass
+
+import bech32
+import mnemonic
 from ecdsa import SigningKey, VerifyingKey, SECP256k1
 from ecdsa.ecdsa import generator_secp256k1
 from ecdsa.ellipticcurve import INFINITY
 from base58 import b58encode
 from sha3 import keccak_256
-import re
-import mnemonic
-
-err = sys.stderr
 
 
 def sha256(data):
@@ -66,7 +65,11 @@ def ripemd160(data):
     return h.digest()
 
 
-class BIP32Error(Exception):
+class KeytreeError(Exception):
+    pass
+
+
+class BIP32Error(KeytreeError):
     pass
 
 
@@ -146,6 +149,8 @@ def ckd_prv(k_par, c_par, i):
     return k_i, c_i
 
 class BIP32:
+    path_error = BIP32Error("unsupported BIP32 path format")
+
     def __init__(self, seed, key="Bitcoin seed"):
         I = hmac.digest(b"Bitcoin seed", seed, 'sha512')
         I_L, I_R = I[:32], I[32:]
@@ -161,7 +166,7 @@ class BIP32:
             c = self.c
             for r in tokens[1:]:
                 if not rformat.match(r):
-                    raise BIP32Error("unsupported path format")
+                    raise self.path_error
                 if r[-1] == "'":
                     i = iH(int(r[:-1]))
                 else:
@@ -173,7 +178,7 @@ class BIP32:
             c = self.c
             for r in tokens[1:]:
                 if not rformat.match(r):
-                    raise BIP32Error("unsupported path format")
+                    raise self.path_error
                 if r[-1] == "'":
                     i = iH(int(r[:-1]))
                 else:
@@ -181,7 +186,7 @@ class BIP32:
                 K, c = ckd_pub(K, c, i)
             return VerifyingKey.from_public_point(K, curve=SECP256k1)
         else:
-            raise BIP32Error("unsupported path format")
+            raise self.path_error
 
 def get_eth_addr(pk):
     pub_key = pk.to_string()
@@ -204,7 +209,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Derive BIP32 key pairs from BIP39 mnemonic')
     parser.add_argument('--show-private', action='store_true', default=False, help='also show private keys')
     parser.add_argument('--custom-words', action='store_true', default=False, help='use an arbitrary word combination as mnemonic')
-    parser.add_argument('--account-path', default="44'/9000'/0'/0", help='path prefix for key deriving')
+    parser.add_argument('--account-path', default="44'/9000'/0'/0", help="path prefix for key deriving (e.g. \"0/1'/2\")")
     parser.add_argument('--gen-mnemonic', action='store_true', default=False, help='generate a mnemonic (instead of taking an input)')
     parser.add_argument('--lang', type=str, default="english", help='language for mnemonic words')
     parser.add_argument('--start-idx', type=int, default=0, help='the start index for keys')
@@ -213,30 +218,35 @@ if __name__ == '__main__':
     args = parser.parse_args()
     
 
-    if args.gen_mnemonic:
-        mgen = mnemonic.Mnemonic(args.lang)
-        words = mgen.generate(256)
-        print("KEEP THIS PRIVATE: {}".format(words))
-    else:
-        words = getpass('Enter the mnemonic: ')
-        if not args.custom_words:
-            mchecker = mnemonic.Mnemonic(args.lang)
-            if not mchecker.check(words):
-                err.write("Invalid mnemonic\n")
-                sys.exit(1)
-
-    seed = hashlib.pbkdf2_hmac('sha512', unicodedata.normalize('NFKD', words).encode("utf-8"), b"mnemonic", 2048)
-    gen = BIP32(seed)
-    if args.start_idx < 0 or args.end_idx < 0:
+    try:
+        try:
+            if args.gen_mnemonic:
+                mgen = mnemonic.Mnemonic(args.lang)
+                words = mgen.generate(256)
+                print("KEEP THIS PRIVATE: {}".format(words))
+            else:
+                words = getpass('Enter the mnemonic: ')
+                if not args.custom_words:
+                    mchecker = mnemonic.Mnemonic(args.lang)
+                    if not mchecker.check(words):
+                        raise KeytreeError("invalid mnemonic")
+        except FileNotFoundError:
+            raise KeytreeError("invalid language")
+        seed = hashlib.pbkdf2_hmac('sha512', unicodedata.normalize('NFKD', words).encode("utf-8"), b"mnemonic", 2048)
+        gen = BIP32(seed)
+        if args.start_idx < 0 or args.end_idx < 0:
+            raise KeytreeError("invalid start/end index")
+        for i in range(args.start_idx, args.end_idx):
+            path = "m/{}/{}".format(args.account_path, i)
+            priv = gen.derive(path)
+            pub = priv.get_verifying_key()
+            cpub = pub.to_string(encoding="compressed")
+            if args.show_private:
+                print("{}.priv(raw) {}".format(i, priv.to_string().hex()))
+                print("{}.priv(BTC) {}".format(i, get_privkey_btc(priv)))
+            print("{}.addr(AVAX) X-{}".format(i, bech32.bech32_encode('avax', bech32.convertbits(ripemd160(sha256(cpub)), 8, 5))))
+            print("{}.addr(BTC) {}".format(i, get_btc_addr(pub)))
+            print("{}.addr(ETH) {}".format(i, get_eth_addr(pub)))
+    except KeytreeError as e:
+        sys.stderr.write("error: {}\n".format(str(e)))
         sys.exit(1)
-    for i in range(args.start_idx, args.end_idx):
-        path = "m/{}/{}".format(args.account_path, i)
-        priv = gen.derive(path)
-        pub = priv.get_verifying_key()
-        cpub = pub.to_string(encoding="compressed")
-        if args.show_private:
-            print("{}.priv(raw) {}".format(i, priv.to_string().hex()))
-            print("{}.priv(BTC) {}".format(i, get_privkey_btc(priv)))
-        print("{}.addr(AVAX) X-{}".format(i, bech32.bech32_encode('avax', bech32.convertbits(ripemd160(sha256(cpub)), 8, 5))))
-        print("{}.addr(BTC) {}".format(i, get_btc_addr(pub)))
-        print("{}.addr(ETH) {}".format(i, get_eth_addr(pub)))
