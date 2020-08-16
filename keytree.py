@@ -45,6 +45,7 @@ from ecdsa.ellipticcurve import INFINITY
 from base58 import b58encode
 from sha3 import keccak_256
 import re
+import mnemonic
 
 err = sys.stderr
 
@@ -202,13 +203,27 @@ if __name__ == '__main__':
     parser.add_argument('--show-private', action='store_true', default=False, help='also show private keys')
     parser.add_argument('--custom-words', action='store_true', default=False, help='use an arbitrary word combination as mnemonic')
     parser.add_argument('--account-path', default="44'/9000'/0'/0", help='path prefix for key deriving')
+    parser.add_argument('--gen-mnemonic', action='store_true', default=False, help='generate a mnemonic (instead of taking an input)')
+    parser.add_argument('--lang', type=str, default="english", help='language for mnemonic words')
     parser.add_argument('--start-idx', type=int, default=0, help='the start index for keys')
     parser.add_argument('--end-idx', type=int, default=1, help='the end index for keys (exclusive)')
 
     args = parser.parse_args()
+    
 
-    mnemonic = getpass('Enter the mnemonic: ')
-    seed = hashlib.pbkdf2_hmac('sha512', unicodedata.normalize('NFKD', mnemonic).encode("utf-8"), b"mnemonic", 2048)
+    if args.gen_mnemonic:
+        mgen = mnemonic.Mnemonic(args.lang)
+        words = mgen.generate(256)
+        print("KEEP THIS PRIVATE: {}".format(words))
+    else:
+        words = getpass('Enter the mnemonic: ')
+        if not args.custom_words:
+            mchecker = mnemonic.Mnemonic(args.lang)
+            if not mchecker.check(words):
+                err.write("Invalid mnemonic\n")
+                sys.exit(1)
+
+    seed = hashlib.pbkdf2_hmac('sha512', unicodedata.normalize('NFKD', words).encode("utf-8"), b"mnemonic", 2048)
     gen = BIP32(seed)
     if args.start_idx < 0 or args.end_idx < 0:
         sys.exit(1)
