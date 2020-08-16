@@ -8,4 +8,5 @@ setup(name='keytree.py',
       author_email='tederminant@gmail.com',
       license='MIT',
       scripts=['keytree.py'],
+      py_modules=['bech32'],
       install_requires=['ecdsa', 'base58', 'pysha3', 'mnemonic'])
