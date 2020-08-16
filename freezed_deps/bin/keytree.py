@@ -1,4 +1,4 @@
-#! /bin/env python3
+#!/usr/bin/python
 # MIT License
 #
 # Copyright (c) 2020 Ted Yin <tederminant@gmail.com>
@@ -32,11 +32,7 @@
 # Example:
 # python ./keytree.py
 
-import os
 import sys
-basedir = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, basedir + "/freezed_deps")
-
 import argparse
 import hashlib
 import hmac
