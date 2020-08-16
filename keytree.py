@@ -197,9 +197,7 @@ def get_btc_addr(pk):
     return b58encode(h).decode("utf-8")
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Decrypt/verify the Ethereum UTC JSON keystore file')
-    parser.add_argument('input', metavar='INPUT', type=str, nargs='?',
-                        help='the keystore file')
+    parser = argparse.ArgumentParser(description='Derive BIP32 key pairs from BIP39 mnemonic')
     parser.add_argument('--show-private', action='store_true', default=False, help='also show private keys')
     parser.add_argument('--custom-words', action='store_true', default=False, help='use an arbitrary word combination as mnemonic')
     parser.add_argument('--account-path', default="44'/9000'/0'/0", help='path prefix for key deriving')
