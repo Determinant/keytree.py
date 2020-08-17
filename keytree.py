@@ -34,6 +34,9 @@
 
 import os
 import sys
+if sys.version_info[1] < 7:
+    sys.write("Python should be >= 3.7")
+    sys.exit(1)
 basedir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, basedir + "/freezed_deps")
 
