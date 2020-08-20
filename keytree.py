@@ -217,6 +217,7 @@ if __name__ == '__main__':
     parser.add_argument('--lang', type=str, default="english", help='language for mnemonic words')
     parser.add_argument('--start-idx', type=int, default=0, help='the start index for keys')
     parser.add_argument('--end-idx', type=int, default=1, help='the end index for keys (exclusive)')
+    parser.add_argument('--hrp', type=str, default="avax", help='HRP (Human Readable Prefix, defined by Bech32)')
 
     args = parser.parse_args()
     
@@ -247,7 +248,7 @@ if __name__ == '__main__':
             if args.show_private:
                 print("{}.priv(raw) {}".format(i, priv.to_string().hex()))
                 print("{}.priv(BTC) {}".format(i, get_privkey_btc(priv)))
-            print("{}.addr(AVAX) X-{}".format(i, bech32.bech32_encode('avax', bech32.convertbits(ripemd160(sha256(cpub)), 8, 5))))
+            print("{}.addr(AVAX) X-{}".format(i, bech32.bech32_encode(args.hrp, bech32.convertbits(ripemd160(sha256(cpub)), 8, 5))))
             print("{}.addr(BTC) {}".format(i, get_btc_addr(pub)))
             print("{}.addr(ETH) {}".format(i, get_eth_addr(pub)))
     except KeytreeError as e:
