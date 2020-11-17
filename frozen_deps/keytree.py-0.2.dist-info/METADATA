@@ -1,0 +1,18 @@
+Metadata-Version: 2.1
+Name: keytree.py
+Version: 0.2
+Summary: Derive BIP32 key pairs from BIP39 mnemonic
+Home-page: http://github.com/Determinant/keytree.py
+Author: Ted Yin
+Author-email: tederminant@gmail.com
+License: MIT
+Platform: UNKNOWN
+Requires-Dist: ecdsa
+Requires-Dist: base58
+Requires-Dist: pysha3
+Requires-Dist: pycrypto
+Requires-Dist: mnemonic
+
+UNKNOWN
+
+

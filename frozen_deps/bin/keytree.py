@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python
 # MIT License
 #
 # Copyright (c) 2020 Ted Yin <tederminant@gmail.com>
