@@ -30,7 +30,7 @@
 # Use at your own risk.
 #
 # Example:
-# python ./keytree.py
+# python3 ./keytree.py
 
 import os
 import sys
@@ -45,6 +45,7 @@ import argparse
 import hashlib
 import hmac
 import unicodedata
+import json
 from getpass import getpass
 
 import bech32
@@ -52,8 +53,9 @@ import mnemonic
 from ecdsa import SigningKey, VerifyingKey, SECP256k1
 from ecdsa.ecdsa import generator_secp256k1
 from ecdsa.ellipticcurve import INFINITY
-from base58 import b58encode
+from base58 import b58encode, b58decode
 from sha3 import keccak_256
+from Crypto.Cipher import AES
 
 
 def sha256(data):
@@ -208,9 +210,37 @@ def get_btc_addr(pk):
     h += checksum
     return b58encode(h).decode("utf-8")
 
+def load_from_keystore(filename):
+    try:
+        with open(filename, "r") as f:
+            try:
+                parsed = json.load(f)
+                ciphertext = b58decode(parsed['keys'][0]['key'])[:-4]
+                iv = b58decode(parsed['keys'][0]['iv'])[:-4]
+                salt = b58decode(parsed['salt'])[:-4]
+                tag = b58decode(parsed['pass_hash'])[:-4]
+                passwd = getpass('Enter the password to unlock keystore: ').encode('utf-8')
+                key = hashlib.pbkdf2_hmac(
+                        'sha256',
+                        sha256(passwd + salt), salt, 200000)
+                obj = AES.new(key,
+                              mode=AES.MODE_GCM,
+                              nonce=iv)
+                if tag != sha256(passwd + sha256(passwd + salt)):
+                    raise KeytreeError("incorrect keystore password")
+                return obj.decrypt(ciphertext[:-16]).decode('utf-8')
+            except KeytreeError as e:
+                raise e
+            except:
+                raise KeytreeError("invalid or corrupted keystore file")
+    except FileNotFoundError:
+        raise KeytreeError("failed to open file")
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Derive BIP32 key pairs from BIP39 mnemonic')
-    parser.add_argument('--show-private', action='store_true', default=False, help='also show private keys')
+    parser.add_argument('--from-avax-keystore', type=str, default=None, help='load mnemonic from an AVAX keystore file')
+    parser.add_argument('--show-private', action='store_true', default=False, help='also show private keys and the mnemonic')
     parser.add_argument('--custom-words', action='store_true', default=False, help='use an arbitrary word combination as mnemonic')
     parser.add_argument('--account-path', default="44'/9000'/0'/0", help="path prefix for key deriving (e.g. \"0/1'/2\")")
     parser.add_argument('--gen-mnemonic', action='store_true', default=False, help='generate a mnemonic (instead of taking an input)')
@@ -227,15 +257,19 @@ if __name__ == '__main__':
             if args.gen_mnemonic:
                 mgen = mnemonic.Mnemonic(args.lang)
                 words = mgen.generate(256)
-                print("KEEP THIS PRIVATE: {}".format(words))
             else:
-                words = getpass('Enter the mnemonic: ').strip()
-                if not args.custom_words:
-                    mchecker = mnemonic.Mnemonic(args.lang)
-                    if not mchecker.check(words):
-                        raise KeytreeError("invalid mnemonic")
+                if args.from_avax_keystore:
+                    words = load_from_keystore(args.from_avax_keystore)
+                else:
+                    words = getpass('Enter the mnemonic: ').strip()
+                    if not args.custom_words:
+                        mchecker = mnemonic.Mnemonic(args.lang)
+                        if not mchecker.check(words):
+                            raise KeytreeError("invalid mnemonic")
         except FileNotFoundError:
             raise KeytreeError("invalid language")
+        if args.show_private or args.gen_mnemonic:
+            print("KEEP THIS PRIVATE: {}".format(words))
         seed = hashlib.pbkdf2_hmac('sha512', unicodedata.normalize('NFKD', words).encode("utf-8"), b"mnemonic", 2048)
         gen = BIP32(seed)
         if args.start_idx < 0 or args.end_idx < 0:

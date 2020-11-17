@@ -9,3 +9,8 @@ keytree.py
   (recommended).  If you instead do a normal pip install and use
   ``keytree.py`` (without ``./`` prefix), it will use the latest deps fetched
   by pip.
+- You can also load the mnemonic from an existing JSON keystore file (generated
+  by the official AVAX Wallet): ``./keytree.py --from-avax-keystore``.
+- To see all private keys and the mnemonic word, use ``--show-private`` (only
+  use it after you look around and ensure there is no one else looking at your
+  screen).
