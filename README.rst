@@ -12,6 +12,7 @@ Examples
 - To see all private keys and the mnemonic phrase, use ``--show-private`` (only
   use it after you look around and ensure there is no one else looking at your
   screen)
+- Use arbitrary UTF-8 string as your mnemonic ``./keytree.py --custom-words --save-keystore mykeystore.json``
 
 Caveat
 ------
