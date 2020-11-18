@@ -245,7 +245,10 @@ def cb58encode(raw):
 def save_to_keystore(filename, words):
     try:
         with open(filename, "w") as f:
-            passwd = getpass('Enter the password for the keystore (utf-8): ').encode('utf-8')
+            passwd = getpass('Enter the password for saving (utf-8): ').encode('utf-8')
+            passwd2 = getpass('Enter the password again (utf-8): ').encode('utf-8')
+            if passwd != passwd2:
+                raise KeytreeError("mismatching passwords")
             iv = os.urandom(12)
             salt = os.urandom(16)
             pass_hash = sha256(passwd + sha256(passwd + salt))
@@ -312,13 +315,16 @@ if __name__ == '__main__':
             pub = priv.get_verifying_key()
             cpub = pub.to_string(encoding="compressed")
             if args.show_private:
-                print("{}.priv(raw) {}".format(i, priv.to_string().hex()))
+                print("{}.priv(raw/ETH) 0x{}".format(i, priv.to_string().hex()))
                 print("{}.priv(BTC) {}".format(i, get_privkey_btc(priv)))
             print("{}.addr(AVAX) X-{}".format(i, bech32.bech32_encode(args.hrp, bech32.convertbits(ripemd160(sha256(cpub)), 8, 5))))
             print("{}.addr(BTC) {}".format(i, get_btc_addr(pub)))
             print("{}.addr(ETH) {}".format(i, get_eth_addr(pub)))
         if args.save_keystore:
             save_to_keystore(args.save_keystore, words)
+            print("Saved to keystore file: {}".format(args.save_keystore))
     except KeytreeError as e:
         sys.stderr.write("error: {}\n".format(str(e)))
+        sys.exit(1)
+    except KeyboardInterrupt:
         sys.exit(1)
