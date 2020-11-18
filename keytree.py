@@ -55,7 +55,7 @@ from ecdsa.ecdsa import generator_secp256k1
 from ecdsa.ellipticcurve import INFINITY
 from base58 import b58encode, b58decode
 from sha3 import keccak_256
-from Crypto.Cipher import AES
+from Cryptodome.Cipher import AES
 
 
 def sha256(data):
