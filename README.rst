@@ -3,15 +3,20 @@ keytree.py
 
 - Make sure you have Python >= 3.7
 - CD into the cloned repo
-- Make sure dependencies are installed: ``pip3 install --user .``
-- Derive 10 keys from the given mnemonic: ``./keytree.py --end-idx 10``
-- Generate a new mnemonic and derive 10 keys from it: ``./keytree.py --end-idx 10 --gen-mnemonic``
-- You can also load the mnemonic from an existing JSON keystore file (generated
-  by the official AVAX Wallet): ``./keytree.py --from-avax-keystore``.
+
+Examples
+--------
+- Derive 10 keys from a given mnemonic: ``./keytree.py --end-idx 10``
+- Generate a new mnemonic, print 10 derived addresses from it, then also save the mnemonic to an encrypted keystore file: ``./keytree.py --end-idx 10 --gen-mnemonic --save-keystore mykeystore.json``
+- Load the mnemonic from an existing keystore file: ``./keytree.py --load-keystore mykeystore.json``
 - To see all private keys and the mnemonic phrase, use ``--show-private`` (only
   use it after you look around and ensure there is no one else looking at your
-  screen).
-- Caveat: the above instructions use a frozen, full clone of all dependencies
-  (recommended).  If you instead do a normal pip install and use
-  ``keytree.py`` (without ``./`` prefix), it will use the latest deps fetched
-  by pip.
+  screen)
+
+Caveat
+------
+The above instructions use a frozen, full clone of all dependencies that is
+shipped in this repo (more secure, recommended, only works on x86-64 Linux).
+If you instead do a normal pip install (``pip3 install --user .``) and use
+``keytree.py`` (without ``./`` prefix), it will use the latest deps fetched by
+pip.

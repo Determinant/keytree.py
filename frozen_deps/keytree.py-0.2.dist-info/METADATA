@@ -10,7 +10,7 @@ Platform: UNKNOWN
 Requires-Dist: ecdsa
 Requires-Dist: base58
 Requires-Dist: pysha3
-Requires-Dist: pycrypto
+Requires-Dist: pycryptodomex
 Requires-Dist: mnemonic
 
 UNKNOWN

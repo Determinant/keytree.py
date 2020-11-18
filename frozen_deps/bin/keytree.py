@@ -223,12 +223,12 @@ def load_from_keystore(filename):
                 key = hashlib.pbkdf2_hmac(
                         'sha256',
                         sha256(passwd + salt), salt, 200000)
-                obj = AES.new(key,
+                a = AES.new(key,
                               mode=AES.MODE_GCM,
                               nonce=iv)
                 if tag != sha256(passwd + sha256(passwd + salt)):
                     raise KeytreeError("incorrect keystore password")
-                return obj.decrypt(ciphertext[:-16]).decode('utf-8')
+                return a.decrypt(ciphertext[:-16]).decode('utf-8')
             except KeytreeError as e:
                 raise e
             except:
@@ -237,9 +237,43 @@ def load_from_keystore(filename):
         raise KeytreeError("failed to open file")
 
 
+def cb58encode(raw):
+    checksum = sha256(raw)[-4:]
+    return b58encode(raw + checksum)
+
+
+def save_to_keystore(filename, words):
+    try:
+        with open(filename, "w") as f:
+            #try:
+                passwd = getpass('Enter the password for the keystore (utf-8): ').encode('utf-8')
+                iv = os.urandom(12)
+                salt = os.urandom(16)
+                pass_hash = sha256(passwd + sha256(passwd + salt))
+                key = hashlib.pbkdf2_hmac(
+                        'sha256',
+                        sha256(passwd + salt), salt, 200000)
+                a = AES.new(key,
+                              mode=AES.MODE_GCM,
+                              nonce=iv).update(salt)
+                (c, t) = a.encrypt_with_digest(words)
+                ciphertext = c + t
+                json.dump({
+                    'keys': [
+                        {'key': cb58encode(ciphertext), 'iv': cb58encode(iv)}],
+                    'salt': cb58encode(salt),
+                    'pass_hash': cb58encode(pass_hash)
+                }, f)
+            #except:
+            #    raise KeytreeError("invalid or corrupted keystore file")
+    except FileNotFoundError:
+        raise KeytreeError("failed to open file")
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Derive BIP32 key pairs from BIP39 mnemonic')
-    parser.add_argument('--from-avax-keystore', type=str, default=None, help='load mnemonic from an AVAX keystore file')
+    parser.add_argument('--load-keystore', type=str, default=None, help='load mnemonic from a keystore file (AVAX Wallet compatible)')
+    parser.add_argument('--save-keystore', type=str, default=None, help='save mnemonic to a keystore file (AVAX Wallet compatible)')
     parser.add_argument('--show-private', action='store_true', default=False, help='also show private keys and the mnemonic')
     parser.add_argument('--custom-words', action='store_true', default=False, help='use an arbitrary word combination as mnemonic')
     parser.add_argument('--account-path', default="44'/9000'/0'/0", help="path prefix for key deriving (e.g. \"0/1'/2\")")
@@ -258,8 +292,8 @@ if __name__ == '__main__':
                 mgen = mnemonic.Mnemonic(args.lang)
                 words = mgen.generate(256)
             else:
-                if args.from_avax_keystore:
-                    words = load_from_keystore(args.from_avax_keystore)
+                if args.load_keystore:
+                    words = load_from_keystore(args.load_keystore)
                 else:
                     words = getpass('Enter the mnemonic: ').strip()
                     if not args.custom_words:
@@ -285,6 +319,8 @@ if __name__ == '__main__':
             print("{}.addr(AVAX) X-{}".format(i, bech32.bech32_encode(args.hrp, bech32.convertbits(ripemd160(sha256(cpub)), 8, 5))))
             print("{}.addr(BTC) {}".format(i, get_btc_addr(pub)))
             print("{}.addr(ETH) {}".format(i, get_eth_addr(pub)))
+        if args.save_keystore:
+            save_to_keystore(args.save_keystore, words)
     except KeytreeError as e:
         sys.stderr.write("error: {}\n".format(str(e)))
         sys.exit(1)
