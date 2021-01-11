@@ -55,7 +55,7 @@ from ecdsa.ecdsa import generator_secp256k1
 from ecdsa.ellipticcurve import INFINITY
 from base58 import b58encode, b58decode
 from sha3 import keccak_256
-from Crypto.Cipher import AES
+from Cryptodome.Cipher import AES
 
 
 def sha256(data):
@@ -225,10 +225,10 @@ def load_from_keystore(filename):
                         sha256(passwd + salt), salt, 200000)
                 a = AES.new(key,
                               mode=AES.MODE_GCM,
-                              nonce=iv)
+                              nonce=iv).update(salt)
                 if tag != sha256(passwd + sha256(passwd + salt)):
                     raise KeytreeError("incorrect keystore password")
-                return a.decrypt(ciphertext[:-16]).decode('utf-8')
+                return a.decrypt_and_verify(ciphertext[:-16], ciphertext[-16:]).decode('utf-8')
             except KeytreeError as e:
                 raise e
             except:
@@ -239,35 +239,36 @@ def load_from_keystore(filename):
 
 def cb58encode(raw):
     checksum = sha256(raw)[-4:]
-    return b58encode(raw + checksum)
+    return b58encode(raw + checksum).decode('utf-8')
 
 
 def save_to_keystore(filename, words):
     try:
         with open(filename, "w") as f:
-            #try:
-                passwd = getpass('Enter the password for the keystore (utf-8): ').encode('utf-8')
-                iv = os.urandom(12)
-                salt = os.urandom(16)
-                pass_hash = sha256(passwd + sha256(passwd + salt))
-                key = hashlib.pbkdf2_hmac(
-                        'sha256',
-                        sha256(passwd + salt), salt, 200000)
-                a = AES.new(key,
-                              mode=AES.MODE_GCM,
-                              nonce=iv).update(salt)
-                (c, t) = a.encrypt_with_digest(words)
-                ciphertext = c + t
-                json.dump({
-                    'keys': [
-                        {'key': cb58encode(ciphertext), 'iv': cb58encode(iv)}],
-                    'salt': cb58encode(salt),
-                    'pass_hash': cb58encode(pass_hash)
-                }, f)
-            #except:
-            #    raise KeytreeError("invalid or corrupted keystore file")
+            passwd = getpass('Enter the password for saving (utf-8): ').encode('utf-8')
+            passwd2 = getpass('Enter the password again (utf-8): ').encode('utf-8')
+            if passwd != passwd2:
+                raise KeytreeError("mismatching passwords")
+            iv = os.urandom(12)
+            salt = os.urandom(16)
+            pass_hash = sha256(passwd + sha256(passwd + salt))
+            key = hashlib.pbkdf2_hmac(
+                    'sha256',
+                    sha256(passwd + salt), salt, 200000)
+            a = AES.new(key,
+                          mode=AES.MODE_GCM,
+                          nonce=iv).update(salt)
+            (c, t) = a.encrypt_and_digest(words.encode('utf-8'))
+            ciphertext = c + t
+            json.dump({
+                'version': "5.0",
+                'keys': [
+                    {'key': cb58encode(ciphertext), 'iv': cb58encode(iv)}],
+                'salt': cb58encode(salt),
+                'pass_hash': cb58encode(pass_hash)
+            }, f)
     except FileNotFoundError:
-        raise KeytreeError("failed to open file")
+        raise KeytreeError("failed while saving")
 
 
 if __name__ == '__main__':
@@ -314,13 +315,16 @@ if __name__ == '__main__':
             pub = priv.get_verifying_key()
             cpub = pub.to_string(encoding="compressed")
             if args.show_private:
-                print("{}.priv(raw) {}".format(i, priv.to_string().hex()))
+                print("{}.priv(raw/ETH) 0x{}".format(i, priv.to_string().hex()))
                 print("{}.priv(BTC) {}".format(i, get_privkey_btc(priv)))
             print("{}.addr(AVAX) X-{}".format(i, bech32.bech32_encode(args.hrp, bech32.convertbits(ripemd160(sha256(cpub)), 8, 5))))
             print("{}.addr(BTC) {}".format(i, get_btc_addr(pub)))
             print("{}.addr(ETH) {}".format(i, get_eth_addr(pub)))
         if args.save_keystore:
             save_to_keystore(args.save_keystore, words)
+            print("Saved to keystore file: {}".format(args.save_keystore))
     except KeytreeError as e:
         sys.stderr.write("error: {}\n".format(str(e)))
+        sys.exit(1)
+    except KeyboardInterrupt:
         sys.exit(1)

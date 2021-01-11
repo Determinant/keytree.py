@@ -6,8 +6,8 @@ mnemonic-0.19.dist-info/RECORD,,
 mnemonic-0.19.dist-info/WHEEL,sha256=HX-v9-noUkyUoxyZ1PMSuS7auUxDAR4VBdoYLqD0xws,110
 mnemonic-0.19.dist-info/top_level.txt,sha256=XlFgB9xaifTc2HXO7w9EXCvIUHFN_x51trUyPQKBSHI,9
 mnemonic/__init__.py,sha256=oASNYH5yS0zFSw4wYRvtw_O42j5Xojt7gZ2ur519DWc,45
-mnemonic/__pycache__/__init__.cpython-38.pyc,,
-mnemonic/__pycache__/mnemonic.cpython-38.pyc,,
+mnemonic/__pycache__/__init__.cpython-39.pyc,,
+mnemonic/__pycache__/mnemonic.cpython-39.pyc,,
 mnemonic/mnemonic.py,sha256=WjWwsSKvpv6cP44mXJXrsWqpJuSR-EN8dSb9GFnPfqs,10532
 mnemonic/wordlist/chinese_simplified.txt,sha256=XFlCeSvYNAy4snzVkvEBXt9WqMWyYnbuGKSCQo58VyY,8192
 mnemonic/wordlist/chinese_traditional.txt,sha256=QXsms9hQCkrj1ZcX1wEZUttvwvuEuAfz-UrHNOicG18,8192

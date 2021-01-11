@@ -9,15 +9,17 @@ with the bitcoin network.
 # forum post by Gavin Andresen, so direct your praise to him.
 # This module adds shiny packaging and support for python3.
 
+from functools import lru_cache
 from hashlib import sha256
-from typing import Union
+from typing import Mapping, Union
 
-__version__ = '2.0.1'
+__version__ = '2.1.0'
 
 # 58 character alphabet used
 BITCOIN_ALPHABET = \
     b'123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
 RIPPLE_ALPHABET = b'rpshnaf39wBUDNEGHJKLM4PQRST7VWXYZ2bcdeCg65jkm8oFqi1tuvAxyz'
+XRP_ALPHABET = RIPPLE_ALPHABET
 
 # Retro compatibility
 alphabet = BITCOIN_ALPHABET
@@ -39,8 +41,9 @@ def b58encode_int(
     if not i and default_one:
         return alphabet[0:1]
     string = b""
+    base = len(alphabet)
     while i:
-        i, idx = divmod(i, 58)
+        i, idx = divmod(i, base)
         string = alphabet[idx:idx+1] + string
     return string
 
@@ -53,35 +56,60 @@ def b58encode(
     """
     v = scrub_input(v)
 
-    nPad = len(v)
+    origlen = len(v)
     v = v.lstrip(b'\0')
-    nPad -= len(v)
+    newlen = len(v)
 
-    p, acc = 1, 0
-    for c in reversed(v):
-        acc += p * c
-        p = p << 8
+    acc = int.from_bytes(v, byteorder='big')  # first byte is most significant
+
     result = b58encode_int(acc, default_one=False, alphabet=alphabet)
-    return alphabet[0:1] * nPad + result
+    return alphabet[0:1] * (origlen - newlen) + result
+
+
+@lru_cache()
+def _get_base58_decode_map(alphabet: bytes,
+                           autofix: bool) -> Mapping[int, int]:
+    invmap = {char: index for index, char in enumerate(alphabet)}
+
+    if autofix:
+        groups = [b'0Oo', b'Il1']
+        for group in groups:
+            pivots = [c for c in group if c in invmap]
+            if len(pivots) == 1:
+                for alternative in group:
+                    invmap[alternative] = invmap[pivots[0]]
+
+    return invmap
 
 
 def b58decode_int(
-    v: Union[str, bytes], alphabet: bytes = BITCOIN_ALPHABET
+    v: Union[str, bytes], alphabet: bytes = BITCOIN_ALPHABET, *,
+    autofix: bool = False
 ) -> int:
     """
     Decode a Base58 encoded string as an integer
     """
-    v = v.rstrip()
+    if b' ' not in alphabet:
+        v = v.rstrip()
     v = scrub_input(v)
 
+    map = _get_base58_decode_map(alphabet, autofix=autofix)
+
     decimal = 0
-    for char in v:
-        decimal = decimal * 58 + alphabet.index(char)
+    base = len(alphabet)
+    try:
+        for char in v:
+            decimal = decimal * base + map[char]
+    except KeyError as e:
+        raise ValueError(
+            "Invalid character <{char}>".format(char=chr(e.args[0]))
+        ) from None
     return decimal
 
 
 def b58decode(
-    v: Union[str, bytes], alphabet: bytes = BITCOIN_ALPHABET
+    v: Union[str, bytes], alphabet: bytes = BITCOIN_ALPHABET, *,
+    autofix: bool = False
 ) -> bytes:
     """
     Decode a Base58 encoded string
@@ -93,7 +121,7 @@ def b58decode(
     v = v.lstrip(alphabet[0:1])
     newlen = len(v)
 
-    acc = b58decode_int(v, alphabet=alphabet)
+    acc = b58decode_int(v, alphabet=alphabet, autofix=autofix)
 
     result = []
     while acc > 0:
@@ -116,11 +144,12 @@ def b58encode_check(
 
 
 def b58decode_check(
-    v: Union[str, bytes], alphabet: bytes = BITCOIN_ALPHABET
+    v: Union[str, bytes], alphabet: bytes = BITCOIN_ALPHABET, *,
+    autofix: bool = False
 ) -> bytes:
     '''Decode and verify the checksum of a Base58 encoded string'''
 
-    result = b58decode(v, alphabet=alphabet)
+    result = b58decode(v, alphabet=alphabet, autofix=autofix)
     result, check = result[:-4], result[-4:]
     digest = sha256(sha256(result).digest()).digest()
 

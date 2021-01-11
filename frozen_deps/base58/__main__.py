@@ -1,10 +1,18 @@
 import argparse
 import sys
+from typing import Callable, Dict, Tuple
 
 from base58 import b58decode, b58decode_check, b58encode, b58encode_check
 
+_fmap = {
+    (False, False): b58encode,
+    (False, True): b58encode_check,
+    (True, False): b58decode,
+    (True, True): b58decode_check
+}  # type: Dict[Tuple[bool, bool], Callable[[bytes], bytes]]
 
-def main():
+
+def main() -> None:
     '''Base58 encode or decode FILE, or standard input, to standard output.'''
 
     stdout = sys.stdout.buffer
@@ -26,12 +34,7 @@ def main():
         help='append a checksum before encoding')
 
     args = parser.parse_args()
-    fun = {
-        (False, False): b58encode,
-        (False, True): b58encode_check,
-        (True, False): b58decode,
-        (True, True): b58decode_check
-    }[(args.decode, args.check)]
+    fun = _fmap[(args.decode, args.check)]
 
     data = args.file.buffer.read()
 
