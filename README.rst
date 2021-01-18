@@ -14,13 +14,12 @@ Examples
   screen)
 - Use arbitrary UTF-8 string as your mnemonic ``./keytree.py --custom-words --save-keystore mykeystore.json``
 - Show Fuji testnet address format ``./keytree.py <your options> --hrp fuji``
-- Show corresponding C-Chain address & ETH-format private key ``./keytree.py
-  <your options> --account-path "44'/60'/0'/0"`` (The default ETH
-  addresses/keys without ``--account-path`` are the ones using AVAX's deriving
-  path instead of Ethereum's HD Wallet standard. They are, however, still valid
-  ETH addresses/keys (useful as individual, standalone keys). But to correctly
-  extract Metamask addresses/keys from its wallet with this tool, you need to
-  specify the shown account path)
+- Use Metamask's deriving algorithm: ``./keytree.py <your options>
+  --account-path "44'/60'/0'/0"``. By default, ETH addresses/keys use AVAX's
+  deriving path (AVAX C-Chain keys/addresses) instead of Metamask's. To treat
+  the mnemonic in Metamask's way, use ``--account-path``.  Whatever deriving
+  path is used, the generated individual key-address pair is always valid
+  Ethereum format.
 
 Caveat
 ------
