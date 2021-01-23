@@ -28,3 +28,8 @@ shipped in this repo (more secure, recommended, only works on x86-64 Linux).
 If you instead do a normal pip install (``pip3 install --user .``) and use
 ``keytree.py`` (without ``./`` prefix), it will use the latest deps fetched by
 pip.
+
+Portable Binary
+---------------
+
+Use ``./keytree-0.1.0-x86_64.AppImage`` in place of ``./keytree.py``.
