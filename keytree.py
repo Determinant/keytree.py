@@ -284,7 +284,7 @@ if __name__ == '__main__':
     parser.add_argument('--end-idx', type=int, default=1, help='the end index for keys (exclusive)')
     parser.add_argument('--hrp', type=str, default="avax", help='HRP (Human Readable Prefix, defined by Bech32)')
 
-    args = parser.parse_args()
+    args, _ = parser.parse_known_args()
     
 
     try:

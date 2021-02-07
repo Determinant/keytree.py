@@ -5,7 +5,7 @@ script:
   - cp bech32.py  AppDir/usr/src
   - cp keytree.py  AppDir/usr/src
   - cp setup.py  AppDir/usr/src
-  - python3 -m pip install -t AppDir/usr/src/frozen_deps AppDir/usr/src
+  - python3.9 -m pip install -t AppDir/usr/src/frozen_deps AppDir/usr/src
   - rm -rf AppDir/usr/src/frozen_deps/Cryptodome/SelfTest
 
 
@@ -17,25 +17,19 @@ AppDir:
     name: keytree
     icon: utilities-terminal
     version: 0.1.0
-    exec: usr/src/keytree.py
-    exec_args: $@
+    exec: usr/bin/python3.9
+    exec_args: $APPDIR/usr/src/keytree.py $@
 
-  pacman:
-    Architecture: x86_64
+  apt:
+    arch: amd64
+    sources:
+      - sourceline: 'deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ focal main restricted universe multiverse'
+        key_url: 'http://keyserver.ubuntu.com/pks/lookup?op=get&search=0x3b4fe6acc0b21f32'
+      - sourceline: 'deb [arch=amd64] http://ppa.launchpad.net/deadsnakes/ppa/ubuntu focal main'
+        key_url: 'http://keyserver.ubuntu.com/pks/lookup?op=get&search=0xBA6932366A755776'
     include:
-      - python
-    exclude:
-      - perl
-      - krb5
-      - gdbm
-      - gcc-libs
-      - openssl
-      - libtirpc
-      - libnsl
-      - libffi
-      - expat
-      - zlib
-      - bzip2
+      - python3.9
+    exclude: []
 
   runtime:
     env:
@@ -45,7 +39,7 @@ AppDir:
       PYTHONHOME: '${APPDIR}/usr'
       # Path to the site-packages dir or other modules dirs
       # See https://docs.python.org/3/using/cmdline.html#envvar-PYTHONPATH
-      PYTHONPATH: '${APPDIR}/usr/lib/python3.9/site-packages'
+      PYTHONPATH: '${APPDIR}/usr/lib/python3.8/site-packages'
 
 AppImage:
   update-information: 'gh-releases-zsync|AppImageCrafters|keytree|latest|python-appimage-*x86_64.AppImage.zsync'
