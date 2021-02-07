@@ -270,24 +270,29 @@ def save_to_keystore(filename, words):
     except FileNotFoundError:
         raise KeytreeError("failed while saving")
 
+metamask_path = r"44'/60'/0'/0"
+avax_path = r"44'/9000'/0'/0"
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Derive BIP32 key pairs from BIP39 mnemonic')
     parser.add_argument('--load-keystore', type=str, default=None, help='load mnemonic from a keystore file (AVAX Wallet compatible)')
     parser.add_argument('--save-keystore', type=str, default=None, help='save mnemonic to a keystore file (AVAX Wallet compatible)')
     parser.add_argument('--show-private', action='store_true', default=False, help='also show private keys and the mnemonic')
-    parser.add_argument('--custom-words', action='store_true', default=False, help='use an arbitrary word combination as mnemonic')
-    parser.add_argument('--account-path', default="44'/9000'/0'/0", help="path prefix for key deriving (e.g. \"0/1'/2\")")
+    parser.add_argument('--custom', action='store_true', default=False, help='use an arbitrary word combination as mnemonic')
+    parser.add_argument('--path', default=avax_path, help="path prefix for key deriving (e.g. \"{}\" for Metamask)".format(metamask_path))
+    parser.add_argument('--metamask', action='store_true', default=False, help="use metamask path for key deriving (synonym to `--path \"{}\"`)".format(metamask_path))
     parser.add_argument('--gen-mnemonic', action='store_true', default=False, help='generate a mnemonic (instead of taking an input)')
     parser.add_argument('--lang', type=str, default="english", help='language for mnemonic words')
     parser.add_argument('--start-idx', type=int, default=0, help='the start index for keys')
     parser.add_argument('--end-idx', type=int, default=1, help='the end index for keys (exclusive)')
     parser.add_argument('--hrp', type=str, default="avax", help='HRP (Human Readable Prefix, defined by Bech32)')
 
-    args, _ = parser.parse_known_args()
-    
+    args, unknown = parser.parse_known_args()
 
     try:
+        for arg in unknown:
+            if len(arg) > 0:
+                raise KeytreeError("invalid argument: `{}`".format(arg))
         try:
             if args.gen_mnemonic:
                 mgen = mnemonic.Mnemonic(args.lang)
@@ -297,7 +302,7 @@ if __name__ == '__main__':
                     words = load_from_keystore(args.load_keystore)
                 else:
                     words = getpass('Enter the mnemonic: ').strip()
-                    if not args.custom_words:
+                    if not args.custom:
                         mchecker = mnemonic.Mnemonic(args.lang)
                         if not mchecker.check(words):
                             raise KeytreeError("invalid mnemonic")
@@ -310,14 +315,14 @@ if __name__ == '__main__':
         if args.start_idx < 0 or args.end_idx < 0:
             raise KeytreeError("invalid start/end index")
         for i in range(args.start_idx, args.end_idx):
-            path = "m/{}/{}".format(args.account_path, i)
+            path = "m/{}/{}".format(metamask_path if args.metamask else args.path, i)
             priv = gen.derive(path)
             pub = priv.get_verifying_key()
             cpub = pub.to_string(encoding="compressed")
             if args.show_private:
                 print("{}.priv(raw/ETH) 0x{}".format(i, priv.to_string().hex()))
                 print("{}.priv(BTC) {}".format(i, get_privkey_btc(priv)))
-            print("{}.addr(AVAX) X-{}".format(i, bech32.bech32_encode(args.hrp, bech32.convertbits(ripemd160(sha256(cpub)), 8, 5))))
+            print("{}.addr(AVAX) (X/P)-{}".format(i, bech32.bech32_encode(args.hrp, bech32.convertbits(ripemd160(sha256(cpub)), 8, 5))))
             print("{}.addr(BTC) {}".format(i, get_btc_addr(pub)))
             print("{}.addr(ETH) {}".format(i, get_eth_addr(pub)))
         if args.save_keystore:
