@@ -7,12 +7,12 @@ keytree.py
 Examples
 --------
 - Derive 10 keys from a given mnemonic: ``./keytree.py --end-idx 10``
-- Generate a new mnemonic, print 10 derived addresses from it, then also save the mnemonic to an encrypted keystore file: ``./keytree.py --end-idx 10 --gen-mnemonic --save-keystore mykeystore.json``
-- Load the mnemonic from an existing keystore file: ``./keytree.py --load-keystore mykeystore.json``
+- Generate a new mnemonic, print 10 derived addresses from it, then also save the mnemonic to an encrypted keystore file: ``./keytree.py --end-idx 10 --gen-mnemonic --save mykeystore.json``
+- Load the mnemonic from an existing keystore file: ``./keytree.py --load mykeystore.json``
 - To see all private keys and the mnemonic phrase, use ``--show-private`` (only
   use it after you look around and ensure there is no one else looking at your
   screen)
-- Use arbitrary UTF-8 string as your mnemonic ``./keytree.py --custom --save-keystore mykeystore.json``
+- Use arbitrary UTF-8 string as your mnemonic ``./keytree.py --custom --save mykeystore.json``
 - Show Fuji testnet address format ``./keytree.py <your options> --hrp fuji``
 - Use Metamask's deriving algorithm: ``./keytree.py <your options>
   --path "44'/60'/0'/0"`` or ``./keytree.py <your options> --metamask``. By
