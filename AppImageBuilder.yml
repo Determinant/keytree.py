@@ -16,7 +16,7 @@ AppDir:
     id: org.ted.keytree
     name: keytree
     icon: utilities-terminal
-    version: 0.1.1
+    version: 0.1.2
     exec: usr/bin/python3.9
     exec_args: $APPDIR/usr/src/keytree.py $@
 
