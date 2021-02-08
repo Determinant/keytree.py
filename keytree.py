@@ -46,7 +46,7 @@ import hashlib
 import hmac
 import unicodedata
 import json
-from getpass import getpass
+from getpass import getpass as _getpass
 
 import bech32
 import mnemonic
@@ -58,6 +58,13 @@ from sha3 import keccak_256
 from uuid import uuid4
 from Cryptodome.Cipher import AES
 from Cryptodome.Util import Counter
+
+
+def getpass(prompt):
+    if sys.stdin.isatty():
+        return _getpass(prompt)
+    else:
+        return sys.stdin.readline()
 
 
 def sha256(data):
@@ -334,6 +341,7 @@ if __name__ == '__main__':
     parser.add_argument('--export-mew', action='store_true', default=False, help='export keys to MEW keystore files (mnemonic is NOT saved, only keys are saved)')
     parser.add_argument('--show-private', action='store_true', default=False, help='also show private keys and the mnemonic')
     parser.add_argument('--custom', action='store_true', default=False, help='use an arbitrary word combination as mnemonic')
+    parser.add_argument('--seed', action='store_true', default=False, help='load mnemonic from seed')
     parser.add_argument('--path', default=avax_path, help="path prefix for key deriving (e.g. \"{}\" for Metamask)".format(metamask_path))
     parser.add_argument('--metamask', action='store_true', default=False, help="use metamask path for key deriving (synonym to `--path \"{}\"`)".format(metamask_path))
     parser.add_argument('--gen-mnemonic', action='store_true', default=False, help='generate a mnemonic (instead of taking an input)')
@@ -355,7 +363,7 @@ if __name__ == '__main__':
             else:
                 if args.load:
                     words = load_from_keystore(args.load)
-                else:
+                elif not args.seed:
                     words = getpass('Enter the mnemonic: ').strip()
                     if not args.custom:
                         mchecker = mnemonic.Mnemonic(args.lang)
@@ -363,9 +371,22 @@ if __name__ == '__main__':
                             raise KeytreeError("invalid mnemonic")
         except FileNotFoundError:
             raise KeytreeError("invalid language")
+        if args.end_idx < args.start_idx:
+            args.end_idx = args.start_idx + 1
+        if args.seed:
+            seedstr = getpass('Enter the seed: ').strip()
+            try:
+                seed = bytes.fromhex(seedstr)
+                if len(seed) != 64:
+                    raise ValueError
+            except ValueError:
+                raise KeytreeError("invalid seed")
+        else:
+            seed = hashlib.pbkdf2_hmac('sha512', unicodedata.normalize('NFKD', words).encode("utf-8"), b"mnemonic", 2048)
         if args.show_private or args.gen_mnemonic:
-            print("KEEP THIS PRIVATE: {}".format(words))
-        seed = hashlib.pbkdf2_hmac('sha512', unicodedata.normalize('NFKD', words).encode("utf-8"), b"mnemonic", 2048)
+            if not args.seed:
+                print("KEEP THIS PRIVATE (mnemonic): {}".format(words))
+            print("KEEP THIS PRIVATE (seed): {}".format(seed.hex()))
         gen = BIP32(seed)
         if args.start_idx < 0 or args.end_idx < 0:
             raise KeytreeError("invalid start/end index")
