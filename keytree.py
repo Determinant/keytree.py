@@ -224,10 +224,15 @@ def load_from_keystore(filename):
         with open(filename, "r") as f:
             try:
                 parsed = json.load(f)
+                version = parsed['version']
+                try:
+                    if parsed['keys'][0]['type'] != 'mnemonic':
+                        raise KeytreeError("not a mnemonic keystore file")
+                except KeyError:
+                    pass
                 ciphertext = b58decode(parsed['keys'][0]['key'])[:-4]
                 iv = b58decode(parsed['keys'][0]['iv'])[:-4]
                 salt = b58decode(parsed['salt'])[:-4]
-                tag = b58decode(parsed['pass_hash'])[:-4]
                 passwd = getpass('Enter the password to unlock keystore: ').encode('utf-8')
                 key = hashlib.pbkdf2_hmac(
                         'sha256',
@@ -235,9 +240,14 @@ def load_from_keystore(filename):
                 a = AES.new(key,
                               mode=AES.MODE_GCM,
                               nonce=iv).update(salt)
-                if tag != sha256(passwd + sha256(passwd + salt)):
+                if version == '5.0':
+                    tag = b58decode(parsed['pass_hash'])[:-4]
+                    if tag != sha256(passwd + sha256(passwd + salt)):
+                        raise KeytreeError("incorrect keystore password")
+                try:
+                    return a.decrypt_and_verify(ciphertext[:-16], ciphertext[-16:]).decode('utf-8')
+                except:
                     raise KeytreeError("incorrect keystore password")
-                return a.decrypt_and_verify(ciphertext[:-16], ciphertext[-16:]).decode('utf-8')
             except KeytreeError as e:
                 raise e
             except:
@@ -260,7 +270,7 @@ def save_to_keystore(filename, words):
                 raise KeytreeError("mismatching passwords")
             iv = os.urandom(12)
             salt = os.urandom(16)
-            pass_hash = sha256(passwd + sha256(passwd + salt))
+            # pass_hash = sha256(passwd + sha256(passwd + salt))
             key = hashlib.pbkdf2_hmac(
                     'sha256',
                     sha256(passwd + salt), salt, 200000)
@@ -270,11 +280,16 @@ def save_to_keystore(filename, words):
             (c, t) = a.encrypt_and_digest(words.encode('utf-8'))
             ciphertext = c + t
             json.dump({
-                'version': "5.0",
+                'version': "6.0",
+                'activeIndex': 0,
                 'keys': [
-                    {'key': cb58encode(ciphertext), 'iv': cb58encode(iv)}],
+                    {
+                        'key': cb58encode(ciphertext),
+                        'iv': cb58encode(iv),
+                        'type': 'mnemonic'
+                    }],
                 'salt': cb58encode(salt),
-                'pass_hash': cb58encode(pass_hash)
+                # 'pass_hash': cb58encode(pass_hash)
             }, f)
     except FileNotFoundError:
         raise KeytreeError("failed while saving")
