@@ -14,12 +14,6 @@ Examples
   screen)
 - Use arbitrary UTF-8 string as your mnemonic ``./keytree.py --custom --save mykeystore.json``
 - Show Fuji testnet address format ``./keytree.py <your options> --hrp fuji``
-- Use Metamask's deriving algorithm: ``./keytree.py <your options>
-  --path "44'/60'/0'/0"`` or ``./keytree.py <your options> --metamask``. By
-  default, ETH addresses/keys use AVAX's deriving path (AVAX C-Chain
-  keys/addresses) instead of Metamask's. To treat the mnemonic in Metamask's
-  way, use ``--path``.  Whatever deriving path is used, the generated
-  individual key-address pair is always valid Ethereum format.
 
 Caveat
 ------
