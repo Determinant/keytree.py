@@ -415,7 +415,7 @@ if __name__ == '__main__':
             if args.show_private:
                 print("{}.priv(raw/ETH/AVAX-X) 0x{}".format(i, priv.to_string().hex()))
                 print("{}.priv(BTC) {}".format(i, get_privkey_btc(priv)))
-            print("{}.addr(AVAX) (X/P)-{}".format(i, bech32.bech32_encode(args.hrp, bech32.convertbits(ripemd160(sha256(cpub)), 8, 5))))
+            print("{}.addr(AVAX-X/P) {}".format(i, bech32.bech32_encode(args.hrp, bech32.convertbits(ripemd160(sha256(cpub)), 8, 5))))
 
             path2 = "m/{}/{}".format(metamask_path, i)
             priv2 = gen.derive(path2)
@@ -425,7 +425,7 @@ if __name__ == '__main__':
             print("{}.addr(AVAX-C) 0x{}".format(i, get_eth_addr(pub2)))
 
             print("{}.addr(BTC) {}".format(i, get_btc_addr(pub)))
-            print("{}.addr(ETH) {}".format(i, get_eth_addr(pub)))
+            print("{}.addr(ETH) 0x{}".format(i, get_eth_addr(pub)))
         if args.export_mew:
             save_to_mew(keys)
         if args.save:

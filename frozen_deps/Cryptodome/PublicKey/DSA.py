@@ -94,6 +94,8 @@ class DsaKey(object):
 
     :ivar x: Private key
     :vartype x: integer
+
+    :undocumented: exportKey, publickey
     """
 
     _keydata = ['y', 'g', 'p', 'q', 'x']
@@ -149,7 +151,7 @@ class DsaKey(object):
     def can_sign(self):     # legacy
         return True
 
-    def publickey(self):
+    def public_key(self):
         """A matching DSA public key.
 
         Returns:
@@ -332,6 +334,7 @@ class DsaKey(object):
 
     # Backward-compatibility
     exportKey = export_key
+    publickey = public_key
 
     # Methods defined in PyCryptodome that we don't support anymore
 
@@ -449,7 +452,7 @@ def generate(bits, randfunc=None, domain=None):
         ## Perform consistency check on domain parameters
         # P and Q must be prime
         fmt_error = test_probable_prime(p) == COMPOSITE
-        fmt_error = test_probable_prime(q) == COMPOSITE
+        fmt_error |= test_probable_prime(q) == COMPOSITE
         # Verify Lagrange's theorem for sub-group
         fmt_error |= ((p - 1) % q) != 0
         fmt_error |= g <= 1 or g >= p
@@ -515,7 +518,7 @@ def construct(tup, consistency_check=True):
     if consistency_check:
         # P and Q must be prime
         fmt_error = test_probable_prime(key.p) == COMPOSITE
-        fmt_error = test_probable_prime(key.q) == COMPOSITE
+        fmt_error |= test_probable_prime(key.q) == COMPOSITE
         # Verify Lagrange's theorem for sub-group
         fmt_error |= ((key.p - 1) % key.q) != 0
         fmt_error |= key.g <= 1 or key.g >= key.p

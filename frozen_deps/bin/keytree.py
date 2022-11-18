@@ -46,7 +46,7 @@ import hashlib
 import hmac
 import unicodedata
 import json
-from getpass import getpass
+from getpass import getpass as _getpass
 
 import bech32
 import mnemonic
@@ -55,7 +55,16 @@ from ecdsa.ecdsa import generator_secp256k1
 from ecdsa.ellipticcurve import INFINITY
 from base58 import b58encode, b58decode
 from sha3 import keccak_256
+from uuid import uuid4
 from Cryptodome.Cipher import AES
+from Cryptodome.Util import Counter
+
+
+def getpass(prompt):
+    if sys.stdin.isatty():
+        return _getpass(prompt)
+    else:
+        return sys.stdin.readline()
 
 
 def sha256(data):
@@ -215,10 +224,15 @@ def load_from_keystore(filename):
         with open(filename, "r") as f:
             try:
                 parsed = json.load(f)
+                version = parsed['version']
+                try:
+                    if parsed['keys'][0]['type'] != 'mnemonic':
+                        raise KeytreeError("not a mnemonic keystore file")
+                except KeyError:
+                    pass
                 ciphertext = b58decode(parsed['keys'][0]['key'])[:-4]
                 iv = b58decode(parsed['keys'][0]['iv'])[:-4]
                 salt = b58decode(parsed['salt'])[:-4]
-                tag = b58decode(parsed['pass_hash'])[:-4]
                 passwd = getpass('Enter the password to unlock keystore: ').encode('utf-8')
                 key = hashlib.pbkdf2_hmac(
                         'sha256',
@@ -226,9 +240,14 @@ def load_from_keystore(filename):
                 a = AES.new(key,
                               mode=AES.MODE_GCM,
                               nonce=iv).update(salt)
-                if tag != sha256(passwd + sha256(passwd + salt)):
+                if version == '5.0':
+                    tag = b58decode(parsed['pass_hash'])[:-4]
+                    if tag != sha256(passwd + sha256(passwd + salt)):
+                        raise KeytreeError("incorrect keystore password")
+                try:
+                    return a.decrypt_and_verify(ciphertext[:-16], ciphertext[-16:]).decode('utf-8')
+                except:
                     raise KeytreeError("incorrect keystore password")
-                return a.decrypt_and_verify(ciphertext[:-16], ciphertext[-16:]).decode('utf-8')
             except KeytreeError as e:
                 raise e
             except:
@@ -251,7 +270,7 @@ def save_to_keystore(filename, words):
                 raise KeytreeError("mismatching passwords")
             iv = os.urandom(12)
             salt = os.urandom(16)
-            pass_hash = sha256(passwd + sha256(passwd + salt))
+            # pass_hash = sha256(passwd + sha256(passwd + salt))
             key = hashlib.pbkdf2_hmac(
                     'sha256',
                     sha256(passwd + salt), salt, 200000)
@@ -261,68 +280,157 @@ def save_to_keystore(filename, words):
             (c, t) = a.encrypt_and_digest(words.encode('utf-8'))
             ciphertext = c + t
             json.dump({
-                'version': "5.0",
+                'version': "6.0",
+                'activeIndex': 0,
                 'keys': [
-                    {'key': cb58encode(ciphertext), 'iv': cb58encode(iv)}],
+                    {
+                        'key': cb58encode(ciphertext),
+                        'iv': cb58encode(iv),
+                        'type': 'mnemonic'
+                    }],
                 'salt': cb58encode(salt),
-                'pass_hash': cb58encode(pass_hash)
+                # 'pass_hash': cb58encode(pass_hash)
             }, f)
     except FileNotFoundError:
         raise KeytreeError("failed while saving")
 
 
+# MEW keystore format (version 3.0)
+def save_to_mew(priv_keys, n=1 << 18, p=1, r=8, dklen=32):
+    try:
+        passwd = getpass('Enter the password for saving (utf-8): ').encode('utf-8')
+        passwd2 = getpass('Enter the password again (utf-8): ').encode('utf-8')
+        if passwd != passwd2:
+            raise KeytreeError("mismatching passwords")
+
+        for priv_key in priv_keys:
+            addr = get_eth_addr(priv_key.get_verifying_key())
+            priv_key = priv_key.to_string()
+            with open("mew-{}.json".format(addr), "w") as f:
+                iv = os.urandom(16)
+                salt = os.urandom(16)
+
+                m = 128 * r * (n + p + 2)
+                dk = hashlib.scrypt(passwd, salt=salt,
+                                    n=n, r=r, p=p, dklen=dklen, maxmem=m)
+                obj = AES.new(dk[:dklen >> 1],
+                              mode=AES.MODE_CTR,
+                              counter=Counter.new(
+                                    128,
+                                    initial_value=int.from_bytes(iv, 'big')))
+                enc_pk = obj.encrypt(priv_key)
+
+                # generate MAC
+                h = keccak_256()
+                h.update(dk[len(dk) >> 1:])
+                h.update(enc_pk)
+                mac = h.digest()
+
+                crypto = {
+                    'ciphertext': enc_pk.hex(),
+                    'cipherparams': {'iv': iv.hex()},
+                    'cipher': 'aes-128-ctr',
+                    'kdf': 'scrypt',
+                    'kdfparams': {'dklen': dklen,
+                                  'salt': salt.hex(),
+                                  'n': n,
+                                  'r': r,
+                                  'p': p},
+                    'mac': mac.hex()}
+                json.dump({
+                    'version': 3,
+                    'id': str(uuid4()),
+                    'address': addr,
+                    'Crypto': crypto}, f)
+    except FileNotFoundError:
+        raise KeytreeError("failed while saving")
+
+
+metamask_path = r"44'/60'/0'/0"
+avax_path = r"44'/9000'/0'/0"
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Derive BIP32 key pairs from BIP39 mnemonic')
-    parser.add_argument('--load-keystore', type=str, default=None, help='load mnemonic from a keystore file (AVAX Wallet compatible)')
-    parser.add_argument('--save-keystore', type=str, default=None, help='save mnemonic to a keystore file (AVAX Wallet compatible)')
+    parser.add_argument('--load', type=str, default=None, help='load mnemonic from a file (AVAX Wallet compatible)')
+    parser.add_argument('--save', type=str, default=None, help='save mnemonic to a file (AVAX Wallet compatible)')
+    parser.add_argument('--export-mew', action='store_true', default=False, help='export keys to MEW keystore files (mnemonic is NOT saved, only keys are saved)')
     parser.add_argument('--show-private', action='store_true', default=False, help='also show private keys and the mnemonic')
-    parser.add_argument('--custom-words', action='store_true', default=False, help='use an arbitrary word combination as mnemonic')
-    parser.add_argument('--account-path', default="44'/9000'/0'/0", help="path prefix for key deriving (e.g. \"0/1'/2\")")
+    parser.add_argument('--custom', action='store_true', default=False, help='use an arbitrary word combination as mnemonic')
+    parser.add_argument('--seed', action='store_true', default=False, help='load mnemonic from seed')
+    parser.add_argument('--path', default=avax_path, help="path prefix for key deriving (e.g. \"{}\" for Metamask)".format(metamask_path))
+    parser.add_argument('--metamask', action='store_true', default=False, help="use metamask path for key deriving (synonym to `--path \"{}\"`)".format(metamask_path))
     parser.add_argument('--gen-mnemonic', action='store_true', default=False, help='generate a mnemonic (instead of taking an input)')
     parser.add_argument('--lang', type=str, default="english", help='language for mnemonic words')
     parser.add_argument('--start-idx', type=int, default=0, help='the start index for keys')
     parser.add_argument('--end-idx', type=int, default=1, help='the end index for keys (exclusive)')
     parser.add_argument('--hrp', type=str, default="avax", help='HRP (Human Readable Prefix, defined by Bech32)')
 
-    args = parser.parse_args()
-    
+    args, unknown = parser.parse_known_args()
 
     try:
+        for arg in unknown:
+            if len(arg) > 0:
+                raise KeytreeError("invalid argument: `{}`".format(arg))
         try:
             if args.gen_mnemonic:
                 mgen = mnemonic.Mnemonic(args.lang)
                 words = mgen.generate(256)
             else:
-                if args.load_keystore:
-                    words = load_from_keystore(args.load_keystore)
-                else:
+                if args.load:
+                    words = load_from_keystore(args.load)
+                elif not args.seed:
                     words = getpass('Enter the mnemonic: ').strip()
-                    if not args.custom_words:
+                    if not args.custom:
                         mchecker = mnemonic.Mnemonic(args.lang)
                         if not mchecker.check(words):
                             raise KeytreeError("invalid mnemonic")
         except FileNotFoundError:
             raise KeytreeError("invalid language")
+        if args.end_idx < args.start_idx:
+            args.end_idx = args.start_idx + 1
+        if args.seed:
+            seedstr = getpass('Enter the seed: ').strip()
+            try:
+                seed = bytes.fromhex(seedstr)
+                if len(seed) != 64:
+                    raise ValueError
+            except ValueError:
+                raise KeytreeError("invalid seed")
+        else:
+            seed = hashlib.pbkdf2_hmac('sha512', unicodedata.normalize('NFKD', words).encode("utf-8"), b"mnemonic", 2048)
         if args.show_private or args.gen_mnemonic:
-            print("KEEP THIS PRIVATE: {}".format(words))
-        seed = hashlib.pbkdf2_hmac('sha512', unicodedata.normalize('NFKD', words).encode("utf-8"), b"mnemonic", 2048)
+            if not args.seed:
+                print("KEEP THIS PRIVATE (mnemonic): {}".format(words))
+            print("KEEP THIS PRIVATE (seed): {}".format(seed.hex()))
         gen = BIP32(seed)
         if args.start_idx < 0 or args.end_idx < 0:
             raise KeytreeError("invalid start/end index")
+        keys = []
         for i in range(args.start_idx, args.end_idx):
-            path = "m/{}/{}".format(args.account_path, i)
+            path = "m/{}/{}".format(metamask_path if args.metamask else args.path, i)
             priv = gen.derive(path)
+            keys.append(priv)
             pub = priv.get_verifying_key()
             cpub = pub.to_string(encoding="compressed")
             if args.show_private:
-                print("{}.priv(raw/ETH) 0x{}".format(i, priv.to_string().hex()))
+                print("{}.priv(raw/ETH/AVAX-X) 0x{}".format(i, priv.to_string().hex()))
                 print("{}.priv(BTC) {}".format(i, get_privkey_btc(priv)))
-            print("{}.addr(AVAX) X-{}".format(i, bech32.bech32_encode(args.hrp, bech32.convertbits(ripemd160(sha256(cpub)), 8, 5))))
+            print("{}.addr(AVAX-X/P) {}".format(i, bech32.bech32_encode(args.hrp, bech32.convertbits(ripemd160(sha256(cpub)), 8, 5))))
+
+            path2 = "m/{}/{}".format(metamask_path, i)
+            priv2 = gen.derive(path2)
+            pub2 = priv2.get_verifying_key()
+            if args.show_private:
+                print("{}.priv(AVAX-C) 0x{}".format(i, priv2.to_string().hex()))
+            print("{}.addr(AVAX-C) 0x{}".format(i, get_eth_addr(pub2)))
+
             print("{}.addr(BTC) {}".format(i, get_btc_addr(pub)))
-            print("{}.addr(ETH) {}".format(i, get_eth_addr(pub)))
-        if args.save_keystore:
-            save_to_keystore(args.save_keystore, words)
-            print("Saved to keystore file: {}".format(args.save_keystore))
+            print("{}.addr(ETH) 0x{}".format(i, get_eth_addr(pub)))
+        if args.export_mew:
+            save_to_mew(keys)
+        if args.save:
+            save_to_keystore(args.save, words)
+            print("Saved to keystore file: {}".format(args.save))
     except KeytreeError as e:
         sys.stderr.write("error: {}\n".format(str(e)))
         sys.exit(1)

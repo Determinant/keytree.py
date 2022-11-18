@@ -5,7 +5,7 @@ try:
 except ImportError:
     import unittest
 import os
-import time
+import sys
 import shutil
 import subprocess
 import pytest
@@ -26,6 +26,10 @@ from .util import sigdecode_der, sigdecode_strings
 from .util import number_to_string, encoded_oid_ecPublicKey, MalformedSignature
 from .curves import Curve, UnknownCurveError
 from .curves import (
+    SECP112r1,
+    SECP112r2,
+    SECP128r1,
+    SECP160r1,
     NIST192p,
     NIST224p,
     NIST256p,
@@ -39,6 +43,8 @@ from .curves import (
     BRAINPOOLP320r1,
     BRAINPOOLP384r1,
     BRAINPOOLP512r1,
+    Ed25519,
+    Ed448,
     curves,
 )
 from .ecdsa import (
@@ -136,16 +142,12 @@ class ECDSA(unittest.TestCase):
             BRAINPOOLP384r1,
             BRAINPOOLP512r1,
         ):
-            start = time.time()
             priv = SigningKey.generate(curve=curve)
             pub1 = priv.get_verifying_key()
-            keygen_time = time.time() - start
             pub2 = VerifyingKey.from_string(pub1.to_string(), curve)
             self.assertEqual(pub1.to_string(), pub2.to_string())
             self.assertEqual(len(pub1.to_string()), curve.verifying_key_length)
-            start = time.time()
             sig = priv.sign(b("data"))
-            sign_time = time.time() - start
             self.assertEqual(len(sig), curve.signature_length)
 
     def test_serialize(self):
@@ -310,8 +312,15 @@ class ECDSA(unittest.TestCase):
             def order(self):
                 return 123456789
 
+        class FakeCurveFp:
+            def p(self):
+                return int(
+                    "6525534529039240705020950546962731340"
+                    "4541085228058844382513856749047873406763"
+                )
+
         badcurve = Curve(
-            "unknown", None, FakeGenerator(), (1, 2, 3, 4, 5, 6), None
+            "unknown", FakeCurveFp(), FakeGenerator(), (1, 2, 3, 4, 5, 6), None
         )
         badpub.curve = badcurve
         badder = badpub.to_der()
@@ -616,7 +625,7 @@ class ECDSA(unittest.TestCase):
 
     def test_public_key_recovery(self):
         # Create keys
-        curve = NIST256p
+        curve = BRAINPOOLP160r1
 
         sk = SigningKey.generate(curve=curve)
         vk = sk.get_verifying_key()
@@ -642,14 +651,14 @@ class ECDSA(unittest.TestCase):
             )
 
         # Test if original vk is the list of recovered keys
-        self.assertTrue(
-            vk.pubkey.point
-            in [recovered_vk.pubkey.point for recovered_vk in recovered_vks]
+        self.assertIn(
+            vk.pubkey.point,
+            [recovered_vk.pubkey.point for recovered_vk in recovered_vks],
         )
 
     def test_public_key_recovery_with_custom_hash(self):
         # Create keys
-        curve = NIST256p
+        curve = BRAINPOOLP160r1
 
         sk = SigningKey.generate(curve=curve, hashfunc=sha256)
         vk = sk.get_verifying_key()
@@ -660,7 +669,7 @@ class ECDSA(unittest.TestCase):
 
         # Recover verifying keys
         recovered_vks = VerifyingKey.from_public_key_recovery(
-            signature, data, curve, hashfunc=sha256
+            signature, data, curve, hashfunc=sha256, allow_truncate=True
         )
 
         # Test if each pk is valid
@@ -673,9 +682,9 @@ class ECDSA(unittest.TestCase):
             self.assertEqual(sha256, recovered_vk.default_hashfunc)
 
         # Test if original vk is the list of recovered keys
-        self.assertTrue(
-            vk.pubkey.point
-            in [recovered_vk.pubkey.point for recovered_vk in recovered_vks]
+        self.assertIn(
+            vk.pubkey.point,
+            [recovered_vk.pubkey.point for recovered_vk in recovered_vks],
         )
 
     def test_encoding(self):
@@ -714,6 +723,71 @@ class ECDSA(unittest.TestCase):
 
         from_uncompressed = VerifyingKey.from_string(b("\x06") + enc)
         self.assertEqual(from_uncompressed.pubkey.point, vk.pubkey.point)
+
+    def test_uncompressed_decoding_as_only_alowed(self):
+        enc = b(
+            "\x04"
+            "\x0c\xe0\x1d\xe0d\x1c\x8eS\x8a\xc0\x9eK\xa8x !\xd5\xc2\xc3"
+            "\xfd\xc8\xa0c\xff\xfb\x02\xb9\xc4\x84)\x1a\x0f\x8b\x87\xa4"
+            "z\x8a#\xb5\x97\xecO\xb6\xa0HQ\x89*"
+        )
+        vk = VerifyingKey.from_string(enc, valid_encodings=("uncompressed",))
+        sk = SigningKey.from_secret_exponent(123456789)
+
+        self.assertEqual(vk, sk.verifying_key)
+
+    def test_raw_decoding_with_blocked_format(self):
+        enc = b(
+            "\x0c\xe0\x1d\xe0d\x1c\x8eS\x8a\xc0\x9eK\xa8x !\xd5\xc2\xc3"
+            "\xfd\xc8\xa0c\xff\xfb\x02\xb9\xc4\x84)\x1a\x0f\x8b\x87\xa4"
+            "z\x8a#\xb5\x97\xecO\xb6\xa0HQ\x89*"
+        )
+        with self.assertRaises(MalformedPointError) as exp:
+            VerifyingKey.from_string(enc, valid_encodings=("hybrid",))
+
+        self.assertIn("hybrid", str(exp.exception))
+
+    def test_decoding_with_unknown_format(self):
+        with self.assertRaises(ValueError) as e:
+            VerifyingKey.from_string(b"", valid_encodings=("raw", "foobar"))
+
+        self.assertIn("Only uncompressed, compressed", str(e.exception))
+
+    def test_uncompressed_decoding_with_blocked_format(self):
+        enc = b(
+            "\x04"
+            "\x0c\xe0\x1d\xe0d\x1c\x8eS\x8a\xc0\x9eK\xa8x !\xd5\xc2\xc3"
+            "\xfd\xc8\xa0c\xff\xfb\x02\xb9\xc4\x84)\x1a\x0f\x8b\x87\xa4"
+            "z\x8a#\xb5\x97\xecO\xb6\xa0HQ\x89*"
+        )
+        with self.assertRaises(MalformedPointError) as exp:
+            VerifyingKey.from_string(enc, valid_encodings=("hybrid",))
+
+        self.assertIn("Invalid X9.62 encoding", str(exp.exception))
+
+    def test_hybrid_decoding_with_blocked_format(self):
+        enc = b(
+            "\x06"
+            "\x0c\xe0\x1d\xe0d\x1c\x8eS\x8a\xc0\x9eK\xa8x !\xd5\xc2\xc3"
+            "\xfd\xc8\xa0c\xff\xfb\x02\xb9\xc4\x84)\x1a\x0f\x8b\x87\xa4"
+            "z\x8a#\xb5\x97\xecO\xb6\xa0HQ\x89*"
+        )
+        with self.assertRaises(MalformedPointError) as exp:
+            VerifyingKey.from_string(enc, valid_encodings=("uncompressed",))
+
+        self.assertIn("Invalid X9.62 encoding", str(exp.exception))
+
+    def test_compressed_decoding_with_blocked_format(self):
+        enc = b(
+            "\x02"
+            "\x0c\xe0\x1d\xe0d\x1c\x8eS\x8a\xc0\x9eK\xa8x !\xd5\xc2\xc3"
+            "\xfd\xc8\xa0c\xff\xfb\x02\xb9\xc4\x84)\x1a\x0f\x8b\x87\xa4"
+            "z\x8a#\xb5\x97\xecO\xb6\xa0HQ\x89*"
+        )[:25]
+        with self.assertRaises(MalformedPointError) as exp:
+            VerifyingKey.from_string(enc, valid_encodings=("hybrid", "raw"))
+
+        self.assertIn("(hybrid, raw)", str(exp.exception))
 
     def test_decoding_with_malformed_uncompressed(self):
         enc = b(
@@ -864,6 +938,34 @@ class OpenSSL(unittest.TestCase):
     # sk: 1:OpenSSL->python  2:python->OpenSSL
     # vk: 3:OpenSSL->python  4:python->OpenSSL
     # sig: 5:OpenSSL->python 6:python->OpenSSL
+
+    @pytest.mark.skipif(
+        "secp112r1" not in OPENSSL_SUPPORTED_CURVES,
+        reason="system openssl does not support secp112r1",
+    )
+    def test_from_openssl_secp112r1(self):
+        return self.do_test_from_openssl(SECP112r1)
+
+    @pytest.mark.skipif(
+        "secp112r2" not in OPENSSL_SUPPORTED_CURVES,
+        reason="system openssl does not support secp112r2",
+    )
+    def test_from_openssl_secp112r2(self):
+        return self.do_test_from_openssl(SECP112r2)
+
+    @pytest.mark.skipif(
+        "secp128r1" not in OPENSSL_SUPPORTED_CURVES,
+        reason="system openssl does not support secp128r1",
+    )
+    def test_from_openssl_secp128r1(self):
+        return self.do_test_from_openssl(SECP128r1)
+
+    @pytest.mark.skipif(
+        "secp160r1" not in OPENSSL_SUPPORTED_CURVES,
+        reason="system openssl does not support secp160r1",
+    )
+    def test_from_openssl_secp160r1(self):
+        return self.do_test_from_openssl(SECP160r1)
 
     @pytest.mark.skipif(
         "prime192v1" not in OPENSSL_SUPPORTED_CURVES,
@@ -1030,6 +1132,34 @@ class OpenSSL(unittest.TestCase):
         self.assertEqual(sk, sk_from_p8)
 
     @pytest.mark.skipif(
+        "secp112r1" not in OPENSSL_SUPPORTED_CURVES,
+        reason="system openssl does not support secp112r1",
+    )
+    def test_to_openssl_secp112r1(self):
+        self.do_test_to_openssl(SECP112r1)
+
+    @pytest.mark.skipif(
+        "secp112r2" not in OPENSSL_SUPPORTED_CURVES,
+        reason="system openssl does not support secp112r2",
+    )
+    def test_to_openssl_secp112r2(self):
+        self.do_test_to_openssl(SECP112r2)
+
+    @pytest.mark.skipif(
+        "secp128r1" not in OPENSSL_SUPPORTED_CURVES,
+        reason="system openssl does not support secp128r1",
+    )
+    def test_to_openssl_secp128r1(self):
+        self.do_test_to_openssl(SECP128r1)
+
+    @pytest.mark.skipif(
+        "secp160r1" not in OPENSSL_SUPPORTED_CURVES,
+        reason="system openssl does not support secp160r1",
+    )
+    def test_to_openssl_secp160r1(self):
+        self.do_test_to_openssl(SECP160r1)
+
+    @pytest.mark.skipif(
         "prime192v1" not in OPENSSL_SUPPORTED_CURVES,
         reason="system openssl does not support prime192v1",
     )
@@ -1191,6 +1321,17 @@ class OpenSSL(unittest.TestCase):
             % mdarg
         )
 
+        with open("t/privkey-explicit.pem", "wb") as e:
+            e.write(sk.to_pem(curve_parameters_encoding="explicit"))
+        run_openssl(
+            "dgst %s -sign t/privkey-explicit.pem -out t/data.sig2 t/data.txt"
+            % mdarg
+        )
+        run_openssl(
+            "dgst %s -verify t/pubkey.pem -signature t/data.sig2 t/data.txt"
+            % mdarg
+        )
+
         with open("t/privkey-p8.pem", "wb") as e:
             e.write(sk.to_pem(format="pkcs8"))
         run_openssl(
@@ -1201,6 +1342,133 @@ class OpenSSL(unittest.TestCase):
             "dgst %s -verify t/pubkey.pem -signature t/data.sig3 t/data.txt"
             % mdarg
         )
+
+        with open("t/privkey-p8-explicit.pem", "wb") as e:
+            e.write(
+                sk.to_pem(format="pkcs8", curve_parameters_encoding="explicit")
+            )
+        run_openssl(
+            "dgst %s -sign t/privkey-p8-explicit.pem -out t/data.sig3 t/data.txt"
+            % mdarg
+        )
+        run_openssl(
+            "dgst %s -verify t/pubkey.pem -signature t/data.sig3 t/data.txt"
+            % mdarg
+        )
+
+    OPENSSL_SUPPORTED_TYPES = set()
+    try:
+        if "-rawin" in run_openssl("pkeyutl -help"):
+            OPENSSL_SUPPORTED_TYPES = set(
+                c.lower()
+                for c in ("ED25519", "ED448")
+                if c in run_openssl("list -public-key-methods")
+            )
+    except SubprocessError:
+        pass
+
+    def do_eddsa_test_to_openssl(self, curve):
+        curvename = curve.name.upper()
+
+        if os.path.isdir("t"):
+            shutil.rmtree("t")
+        os.mkdir("t")
+
+        sk = SigningKey.generate(curve=curve)
+        vk = sk.get_verifying_key()
+
+        data = b"data"
+        with open("t/pubkey.der", "wb") as e:
+            e.write(vk.to_der())
+        with open("t/pubkey.pem", "wb") as e:
+            e.write(vk.to_pem())
+
+        sig = sk.sign(data)
+
+        with open("t/data.sig", "wb") as e:
+            e.write(sig)
+        with open("t/data.txt", "wb") as e:
+            e.write(data)
+        with open("t/baddata.txt", "wb") as e:
+            e.write(data + b"corrupt")
+
+        with self.assertRaises(SubprocessError):
+            run_openssl(
+                "pkeyutl -verify -pubin -inkey t/pubkey.pem -rawin "
+                "-in t/baddata.txt -sigfile t/data.sig"
+            )
+        run_openssl(
+            "pkeyutl -verify -pubin -inkey t/pubkey.pem -rawin "
+            "-in t/data.txt -sigfile t/data.sig"
+        )
+
+        shutil.rmtree("t")
+
+    # in practice at least OpenSSL 3.0.0 is needed to make EdDSA signatures
+    # earlier versions support EdDSA only in X.509 certificates
+    @pytest.mark.skipif(
+        "ed25519" not in OPENSSL_SUPPORTED_TYPES,
+        reason="system openssl does not support signing with Ed25519",
+    )
+    def test_to_openssl_ed25519(self):
+        return self.do_eddsa_test_to_openssl(Ed25519)
+
+    @pytest.mark.skipif(
+        "ed448" not in OPENSSL_SUPPORTED_TYPES,
+        reason="system openssl does not support signing with Ed448",
+    )
+    def test_to_openssl_ed448(self):
+        return self.do_eddsa_test_to_openssl(Ed448)
+
+    def do_eddsa_test_from_openssl(self, curve):
+        curvename = curve.name
+
+        if os.path.isdir("t"):
+            shutil.rmtree("t")
+        os.mkdir("t")
+
+        data = b"data"
+
+        run_openssl(
+            "genpkey -algorithm {0} -outform PEM -out t/privkey.pem".format(
+                curvename
+            )
+        )
+        run_openssl(
+            "pkey -outform PEM -pubout -in t/privkey.pem -out t/pubkey.pem"
+        )
+
+        with open("t/data.txt", "wb") as e:
+            e.write(data)
+        run_openssl(
+            "pkeyutl -sign -inkey t/privkey.pem "
+            "-rawin -in t/data.txt -out t/data.sig"
+        )
+
+        with open("t/data.sig", "rb") as e:
+            sig = e.read()
+        with open("t/pubkey.pem", "rb") as e:
+            vk = VerifyingKey.from_pem(e.read())
+
+        self.assertIs(vk.curve, curve)
+
+        vk.verify(sig, data)
+
+        shutil.rmtree("t")
+
+    @pytest.mark.skipif(
+        "ed25519" not in OPENSSL_SUPPORTED_TYPES,
+        reason="system openssl does not support signing with Ed25519",
+    )
+    def test_from_openssl_ed25519(self):
+        return self.do_eddsa_test_from_openssl(Ed25519)
+
+    @pytest.mark.skipif(
+        "ed448" not in OPENSSL_SUPPORTED_TYPES,
+        reason="system openssl does not support signing with Ed448",
+    )
+    def test_from_openssl_ed448(self):
+        return self.do_eddsa_test_from_openssl(Ed448)
 
 
 class TooSmallCurve(unittest.TestCase):
@@ -1215,7 +1483,6 @@ class TooSmallCurve(unittest.TestCase):
     )
     def test_sign_too_small_curve_dont_allow_truncate_raises(self):
         sk = SigningKey.generate(curve=NIST192p)
-        vk = sk.get_verifying_key()
         data = b("data")
         with self.assertRaises(BadDigestError):
             sk.sign(
@@ -1319,13 +1586,13 @@ class Util(unittest.TestCase):
         for i in range(1000):
             seed = "seed-%d" % i
             for order in (
-                2 ** 8 - 2,
-                2 ** 8 - 1,
-                2 ** 8,
-                2 ** 8 + 1,
-                2 ** 8 + 2,
-                2 ** 16 - 1,
-                2 ** 16 + 1,
+                2**8 - 2,
+                2**8 - 1,
+                2**8,
+                2**8 + 1,
+                2**8 + 2,
+                2**16 - 1,
+                2**16 + 1,
             ):
                 n = tta(seed, order)
                 self.assertTrue(1 <= n < order, (1, n, order))
@@ -1335,24 +1602,35 @@ class Util(unittest.TestCase):
             b("6fa59d73bf0446ae8743cf748fc5ac11d5585a90356417e97155c3bc"),
         )
 
-    @given(st.integers(min_value=0, max_value=10 ** 200))
+    def test_trytryagain_single(self):
+        tta = util.randrange_from_seed__trytryagain
+        order = 2**8 - 2
+        seed = b"text"
+        n = tta(seed, order)
+        # known issue: https://github.com/warner/python-ecdsa/issues/221
+        if sys.version_info < (3, 0):  # pragma: no branch
+            self.assertEqual(n, 228)
+        else:
+            self.assertEqual(n, 18)
+
+    @given(st.integers(min_value=0, max_value=10**200))
     def test_randrange(self, i):
         # util.randrange does not provide long-term stability: we might
         # change the algorithm in the future.
         entropy = util.PRNG("seed-%d" % i)
         for order in (
-            2 ** 8 - 2,
-            2 ** 8 - 1,
-            2 ** 8,
-            2 ** 16 - 1,
-            2 ** 16 + 1,
+            2**8 - 2,
+            2**8 - 1,
+            2**8,
+            2**16 - 1,
+            2**16 + 1,
         ):
             # that oddball 2**16+1 takes half our runtime
             n = util.randrange(order, entropy=entropy)
             self.assertTrue(1 <= n < order, (1, n, order))
 
     def OFF_test_prove_uniformity(self):  # pragma: no cover
-        order = 2 ** 8 - 2
+        order = 2**8 - 2
         counts = dict([(i, 0) for i in range(1, order)])
         assert 0 not in counts
         assert order not in counts

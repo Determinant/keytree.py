@@ -1,7 +1,7 @@
 keytree.py
 ==========
 
-- Make sure you have Python = 3.9
+- Make sure you have Python = 3.10
 - CD into the cloned repo
 
 Examples

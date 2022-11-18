@@ -1,7 +1,5 @@
 import operator
-from six import print_
 from functools import reduce
-import operator
 
 try:
     import unittest2 as unittest
@@ -19,6 +17,7 @@ except ImportError:  # pragma: no cover
     HC_PRESENT = False
 from .numbertheory import (
     SquareRootError,
+    JacobiError,
     factorization,
     gcd,
     lcm,
@@ -84,11 +83,61 @@ def test_square_root_mod_prime_for_small_primes(prime):
             square_root_mod_prime(nonsquare, prime)
 
 
+def test_square_root_mod_prime_for_2():
+    a = square_root_mod_prime(1, 2)
+    assert a == 1
+
+
+def test_square_root_mod_prime_for_small_prime():
+    root = square_root_mod_prime(98**2 % 101, 101)
+    assert root * root % 101 == 9
+
+
+def test_square_root_mod_prime_for_p_congruent_5():
+    p = 13
+    assert p % 8 == 5
+
+    root = square_root_mod_prime(3, p)
+    assert root * root % p == 3
+
+
+def test_square_root_mod_prime_for_p_congruent_5_large_d():
+    p = 29
+    assert p % 8 == 5
+
+    root = square_root_mod_prime(4, p)
+    assert root * root % p == 4
+
+
+class TestSquareRootModPrime(unittest.TestCase):
+    def test_power_of_2_p(self):
+        with self.assertRaises(JacobiError):
+            square_root_mod_prime(12, 32)
+
+    def test_no_square(self):
+        with self.assertRaises(SquareRootError) as e:
+            square_root_mod_prime(12, 31)
+
+        self.assertIn("no square root", str(e.exception))
+
+    def test_non_prime(self):
+        with self.assertRaises(SquareRootError) as e:
+            square_root_mod_prime(12, 33)
+
+        self.assertIn("p is not prime", str(e.exception))
+
+    def test_non_prime_with_negative(self):
+        with self.assertRaises(SquareRootError) as e:
+            square_root_mod_prime(697 - 1, 697)
+
+        self.assertIn("p is not prime", str(e.exception))
+
+
 @st.composite
 def st_two_nums_rel_prime(draw):
     # 521-bit is the biggest curve we operate on, use 1024 for a bit
     # of breathing space
-    mod = draw(st.integers(min_value=2, max_value=2 ** 1024))
+    mod = draw(st.integers(min_value=2, max_value=2**1024))
     num = draw(
         st.integers(min_value=1, max_value=mod - 1).filter(
             lambda x: gcd(x, mod) == 1
@@ -110,7 +159,7 @@ def st_primes(draw, *args, **kwargs):
 
 @st.composite
 def st_num_square_prime(draw):
-    prime = draw(st_primes(max_value=2 ** 1024))
+    prime = draw(st_primes(max_value=2**1024))
     num = draw(st.integers(min_value=0, max_value=1 + prime // 2))
     sq = num * num % prime
     return sq, prime
@@ -122,7 +171,7 @@ def st_comp_with_com_fac(draw):
     Strategy that returns lists of numbers, all having a common factor.
     """
     primes = draw(
-        st.lists(st_primes(max_value=2 ** 512), min_size=1, max_size=10)
+        st.lists(st_primes(max_value=2**512), min_size=1, max_size=10)
     )
     # select random prime(s) that will make the common factor of composites
     com_fac_primes = draw(
@@ -153,7 +202,7 @@ def st_comp_no_com_fac(draw):
     """
     primes = draw(
         st.lists(
-            st_primes(max_value=2 ** 512), min_size=2, max_size=10, unique=True
+            st_primes(max_value=2**512), min_size=2, max_size=10, unique=True
         )
     )
     # first select the primes that will create the uncommon factor
@@ -207,6 +256,38 @@ HYP_SLOW_SETTINGS = dict(HYP_SETTINGS)
 HYP_SLOW_SETTINGS["max_examples"] = 10
 
 
+class TestIsPrime(unittest.TestCase):
+    def test_very_small_prime(self):
+        assert is_prime(23)
+
+    def test_very_small_composite(self):
+        assert not is_prime(22)
+
+    def test_small_prime(self):
+        assert is_prime(123456791)
+
+    def test_special_composite(self):
+        assert not is_prime(10261)
+
+    def test_medium_prime_1(self):
+        # nextPrime[2^256]
+        assert is_prime(2**256 + 0x129)
+
+    def test_medium_prime_2(self):
+        # nextPrime(2^256+0x129)
+        assert is_prime(2**256 + 0x12D)
+
+    def test_medium_trivial_composite(self):
+        assert not is_prime(2**256 + 0x130)
+
+    def test_medium_non_trivial_composite(self):
+        assert not is_prime(2**256 + 0x12F)
+
+    def test_large_prime(self):
+        # nextPrime[2^2048]
+        assert is_prime(2**2048 + 0x3D5)
+
+
 class TestNumbertheory(unittest.TestCase):
     def test_gcd(self):
         assert gcd(3 * 5 * 7, 3 * 5 * 11, 3 * 5 * 13) == 3 * 5
@@ -241,7 +322,7 @@ class TestNumbertheory(unittest.TestCase):
 
     @given(
         st.lists(
-            st.integers(min_value=1, max_value=2 ** 8192),
+            st.integers(min_value=1, max_value=2**8192),
             min_size=1,
             max_size=20,
         )
@@ -259,7 +340,7 @@ class TestNumbertheory(unittest.TestCase):
 
     @given(
         st.lists(
-            st.integers(min_value=1, max_value=2 ** 8192),
+            st.integers(min_value=1, max_value=2**8192),
             min_size=1,
             max_size=20,
         )
@@ -284,15 +365,41 @@ class TestNumbertheory(unittest.TestCase):
         assert calc * calc % prime == square
 
     @settings(**HYP_SETTINGS)
-    @given(st.integers(min_value=1, max_value=10 ** 12))
+    @given(st.integers(min_value=1, max_value=10**12))
     @example(265399 * 1526929)
-    @example(373297 ** 2 * 553991)
+    @example(373297**2 * 553991)
     def test_factorization(self, num):
         factors = factorization(num)
         mult = 1
         for i in factors:
             mult *= i[0] ** i[1]
         assert mult == num
+
+    def test_factorisation_smallprimes(self):
+        exp = 101 * 103
+        assert 101 in smallprimes
+        assert 103 in smallprimes
+        factors = factorization(exp)
+        mult = 1
+        for i in factors:
+            mult *= i[0] ** i[1]
+        assert mult == exp
+
+    def test_factorisation_not_smallprimes(self):
+        exp = 1231 * 1237
+        assert 1231 not in smallprimes
+        assert 1237 not in smallprimes
+        factors = factorization(exp)
+        mult = 1
+        for i in factors:
+            mult *= i[0] ** i[1]
+        assert mult == exp
+
+    def test_jacobi_with_zero(self):
+        assert jacobi(0, 3) == 0
+
+    def test_jacobi_with_one(self):
+        assert jacobi(1, 3) == 1
 
     @settings(**HYP_SETTINGS)
     @given(st.integers(min_value=3, max_value=1000).filter(lambda x: x % 2))

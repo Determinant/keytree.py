@@ -1,56 +1,67 @@
 #! /usr/bin/env python
 
 """
-Implementation of Elliptic-Curve Digital Signatures.
+Low level implementation of Elliptic-Curve Digital Signatures.
+
+.. note ::
+    You're most likely looking for the :py:class:`~ecdsa.keys` module.
+    This is a low-level implementation of the ECDSA that operates on
+    integers, not byte strings.
+
+NOTE: This a low level implementation of ECDSA, for normal applications
+you should be looking at the keys.py module.
 
 Classes and methods for elliptic-curve signatures:
 private keys, public keys, signatures,
-NIST prime-modulus curves with modulus lengths of
-192, 224, 256, 384, and 521 bits.
+and definitions of prime-modulus curves.
 
 Example:
 
-  # (In real-life applications, you would probably want to
-  # protect against defects in SystemRandom.)
-  from random import SystemRandom
-  randrange = SystemRandom().randrange
+.. code-block:: python
 
-  # Generate a public/private key pair using the NIST Curve P-192:
+   # (In real-life applications, you would probably want to
+   # protect against defects in SystemRandom.)
+   from random import SystemRandom
+   randrange = SystemRandom().randrange
 
-  g = generator_192
-  n = g.order()
-  secret = randrange( 1, n )
-  pubkey = Public_key( g, g * secret )
-  privkey = Private_key( pubkey, secret )
+   # Generate a public/private key pair using the NIST Curve P-192:
 
-  # Signing a hash value:
+   g = generator_192
+   n = g.order()
+   secret = randrange( 1, n )
+   pubkey = Public_key( g, g * secret )
+   privkey = Private_key( pubkey, secret )
 
-  hash = randrange( 1, n )
-  signature = privkey.sign( hash, randrange( 1, n ) )
+   # Signing a hash value:
 
-  # Verifying a signature for a hash value:
+   hash = randrange( 1, n )
+   signature = privkey.sign( hash, randrange( 1, n ) )
 
-  if pubkey.verifies( hash, signature ):
-    print_("Demo verification succeeded.")
-  else:
-    print_("*** Demo verification failed.")
+   # Verifying a signature for a hash value:
 
-  # Verification fails if the hash value is modified:
+   if pubkey.verifies( hash, signature ):
+     print_("Demo verification succeeded.")
+   else:
+     print_("*** Demo verification failed.")
 
-  if pubkey.verifies( hash-1, signature ):
-    print_("**** Demo verification failed to reject tampered hash.")
-  else:
-    print_("Demo verification correctly rejected tampered hash.")
+   # Verification fails if the hash value is modified:
 
-Version of 2009.05.16.
+   if pubkey.verifies( hash-1, signature ):
+     print_("**** Demo verification failed to reject tampered hash.")
+   else:
+     print_("Demo verification correctly rejected tampered hash.")
 
 Revision history:
       2005.12.31 - Initial version.
+
       2008.11.25 - Substantial revisions introducing new classes.
+
       2009.05.16 - Warn against using random.randrange in real applications.
+
       2009.05.17 - Use random.SystemRandom by default.
 
-Written in 2005 by Peter Pearson and placed in the public domain.
+Originally written in 2005 by Peter Pearson and placed in the public domain,
+modified as part of the python-ecdsa package.
 """
 
 from six import int2byte, b
@@ -69,16 +80,26 @@ class InvalidPointError(RuntimeError):
 
 
 class Signature(object):
-    """ECDSA signature."""
+    """
+    ECDSA signature.
+
+    :ivar int r: the ``r`` element of the ECDSA signature
+    :ivar int s: the ``s`` element of the ECDSA signature
+    """
 
     def __init__(self, r, s):
         self.r = r
         self.s = s
 
     def recover_public_keys(self, hash, generator):
-        """Returns two public keys for which the signature is valid
-        hash is signed hash
-        generator is the used generator of the signature
+        """
+        Returns two public keys for which the signature is valid
+
+        :param int hash: signed hash
+        :param AbstractPoint generator: is the generator used in creation
+            of the signature
+        :rtype: tuple(Public_key, Public_key)
+        :return: a pair of public keys that can validate the signature
         """
         curve = generator.curve()
         n = generator.order()
@@ -118,7 +139,7 @@ class Public_key(object):
         :param bool verify: if True check if point is valid point on curve
 
         :raises InvalidPointError: if the point parameters are invalid or
-            point does not lie on the curve
+            point does not lay on the curve
         """
 
         self.curve = generator.curve()
@@ -131,7 +152,7 @@ class Public_key(object):
                 "The public point has x or y out of range."
             )
         if verify and not self.curve.contains_point(point.x(), point.y()):
-            raise InvalidPointError("Point does not lie on the curve")
+            raise InvalidPointError("Point does not lay on the curve")
         if not n:
             raise InvalidPointError("Generator point must have order.")
         # for curve parameters with base point with cofactor 1, all points
@@ -145,10 +166,19 @@ class Public_key(object):
             raise InvalidPointError("Generator point order is bad.")
 
     def __eq__(self, other):
+        """Return True if the keys are identical, False otherwise.
+
+        Note: for comparison, only placement on the same curve and point
+        equality is considered, use of the same generator point is not
+        considered.
+        """
         if isinstance(other, Public_key):
-            """Return True if the points are identical, False otherwise."""
             return self.curve == other.curve and self.point == other.point
         return NotImplemented
+
+    def __ne__(self, other):
+        """Return False if the keys are identical, True otherwise."""
+        return not self == other
 
     def verifies(self, hash, signature):
         """Verify that signature is a valid signature of hash.
@@ -188,13 +218,17 @@ class Private_key(object):
         self.secret_multiplier = secret_multiplier
 
     def __eq__(self, other):
+        """Return True if the points are identical, False otherwise."""
         if isinstance(other, Private_key):
-            """Return True if the points are identical, False otherwise."""
             return (
                 self.public_key == other.public_key
                 and self.secret_multiplier == other.secret_multiplier
             )
         return NotImplemented
+
+    def __ne__(self, other):
+        """Return False if the points are identical, True otherwise."""
+        return not self == other
 
     def sign(self, hash, random_k):
         """Return a signature for the provided hash, using the provided
@@ -262,7 +296,7 @@ def string_to_int(s):
 
 def digest_integer(m):
     """Convert an integer into a string of bytes, compute
-     its SHA-1 hash, and convert the result to an integer."""
+    its SHA-1 hash, and convert the result to an integer."""
     #
     # I don't expect this function to be used much. I wrote
     # it in order to be able to duplicate the examples
@@ -292,6 +326,77 @@ def point_is_valid(generator, x, y):
     ):
         return False
     return True
+
+
+# secp112r1 curve
+_p = int(remove_whitespace("DB7C 2ABF62E3 5E668076 BEAD208B"), 16)
+# s = 00F50B02 8E4D696E 67687561 51752904 72783FB1
+_a = int(remove_whitespace("DB7C 2ABF62E3 5E668076 BEAD2088"), 16)
+_b = int(remove_whitespace("659E F8BA0439 16EEDE89 11702B22"), 16)
+_Gx = int(remove_whitespace("09487239 995A5EE7 6B55F9C2 F098"), 16)
+_Gy = int(remove_whitespace("A89C E5AF8724 C0A23E0E 0FF77500"), 16)
+_r = int(remove_whitespace("DB7C 2ABF62E3 5E7628DF AC6561C5"), 16)
+_h = 1
+curve_112r1 = ellipticcurve.CurveFp(_p, _a, _b, _h)
+generator_112r1 = ellipticcurve.PointJacobi(
+    curve_112r1, _Gx, _Gy, 1, _r, generator=True
+)
+
+
+# secp112r2 curve
+_p = int(remove_whitespace("DB7C 2ABF62E3 5E668076 BEAD208B"), 16)
+# s = 022757A1 114D69E 67687561 51755316 C05E0BD4
+_a = int(remove_whitespace("6127 C24C05F3 8A0AAAF6 5C0EF02C"), 16)
+_b = int(remove_whitespace("51DE F1815DB5 ED74FCC3 4C85D709"), 16)
+_Gx = int(remove_whitespace("4BA30AB5 E892B4E1 649DD092 8643"), 16)
+_Gy = int(remove_whitespace("ADCD 46F5882E 3747DEF3 6E956E97"), 16)
+_r = int(remove_whitespace("36DF 0AAFD8B8 D7597CA1 0520D04B"), 16)
+_h = 4
+curve_112r2 = ellipticcurve.CurveFp(_p, _a, _b, _h)
+generator_112r2 = ellipticcurve.PointJacobi(
+    curve_112r2, _Gx, _Gy, 1, _r, generator=True
+)
+
+
+# secp128r1 curve
+_p = int(remove_whitespace("FFFFFFFD FFFFFFFF FFFFFFFF FFFFFFFF"), 16)
+# S = 000E0D4D 69E6768 75615175 0CC03A44 73D03679
+# a and b are mod p, so a is equal to p-3, or simply -3
+# _a = -3
+_b = int(remove_whitespace("E87579C1 1079F43D D824993C 2CEE5ED3"), 16)
+_Gx = int(remove_whitespace("161FF752 8B899B2D 0C28607C A52C5B86"), 16)
+_Gy = int(remove_whitespace("CF5AC839 5BAFEB13 C02DA292 DDED7A83"), 16)
+_r = int(remove_whitespace("FFFFFFFE 00000000 75A30D1B 9038A115"), 16)
+_h = 1
+curve_128r1 = ellipticcurve.CurveFp(_p, -3, _b, _h)
+generator_128r1 = ellipticcurve.PointJacobi(
+    curve_128r1, _Gx, _Gy, 1, _r, generator=True
+)
+
+
+# secp160r1
+_p = int(remove_whitespace("FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF 7FFFFFFF"), 16)
+# S = 1053CDE4 2C14D696 E6768756 1517533B F3F83345
+# a and b are mod p, so a is equal to p-3, or simply -3
+# _a = -3
+_b = int(remove_whitespace("1C97BEFC 54BD7A8B 65ACF89F 81D4D4AD C565FA45"), 16)
+_Gx = int(
+    remove_whitespace("4A96B568 8EF57328 46646989 68C38BB9 13CBFC82"),
+    16,
+)
+_Gy = int(
+    remove_whitespace("23A62855 3168947D 59DCC912 04235137 7AC5FB32"),
+    16,
+)
+_r = int(
+    remove_whitespace("01 00000000 00000000 0001F4C8 F927AED3 CA752257"),
+    16,
+)
+_h = 1
+curve_160r1 = ellipticcurve.CurveFp(_p, -3, _b, _h)
+generator_160r1 = ellipticcurve.PointJacobi(
+    curve_160r1, _Gx, _Gy, 1, _r, generator=True
+)
 
 
 # NIST Curve P-192:

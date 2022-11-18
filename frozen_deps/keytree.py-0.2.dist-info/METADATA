@@ -6,13 +6,9 @@ Home-page: http://github.com/Determinant/keytree.py
 Author: Ted Yin
 Author-email: tederminant@gmail.com
 License: MIT
-Platform: UNKNOWN
 Requires-Dist: ecdsa
 Requires-Dist: base58
 Requires-Dist: pysha3
 Requires-Dist: pycryptodomex
 Requires-Dist: mnemonic
-
-UNKNOWN
-
 

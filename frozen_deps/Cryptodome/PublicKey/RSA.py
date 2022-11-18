@@ -37,7 +37,7 @@ import struct
 
 from Cryptodome import Random
 from Cryptodome.Util.py3compat import tobytes, bord, tostr
-from Cryptodome.Util.asn1 import DerSequence
+from Cryptodome.Util.asn1 import DerSequence, DerNull
 
 from Cryptodome.Math.Numbers import Integer
 from Cryptodome.Math.Primality import (test_probable_prime,
@@ -69,7 +69,9 @@ class RsaKey(object):
     :vartype q: integer
 
     :ivar u: Chinese remainder component (:math:`p^{-1} \text{mod } q`)
-    :vartype q: integer
+    :vartype u: integer
+
+    :undocumented: exportKey, publickey
     """
 
     def __init__(self, **kwargs):
@@ -164,7 +166,7 @@ class RsaKey(object):
         m2 = pow(cp, self._dq, self._q)
         h = ((m2 - m1) * self._u) % self._q
         mp = h * self._p + m1
-        # Step 4: Compute m = m**(r-1) mod n
+        # Step 4: Compute m = m' * (r**(-1)) mod n
         result = (r.inverse(self._n) * mp) % self._n
         # Verify no faults occurred
         if ciphertext != pow(result, self._e, self._n):
@@ -182,7 +184,7 @@ class RsaKey(object):
     def can_sign(self):     # legacy
         return True
 
-    def publickey(self):
+    def public_key(self):
         """A matching RSA public key.
 
         Returns:
@@ -337,19 +339,22 @@ class RsaKey(object):
 
                 if format == 'PEM' and protection is None:
                     key_type = 'PRIVATE KEY'
-                    binary_key = PKCS8.wrap(binary_key, oid, None)
+                    binary_key = PKCS8.wrap(binary_key, oid, None,
+                                            key_params=DerNull())
                 else:
                     key_type = 'ENCRYPTED PRIVATE KEY'
                     if not protection:
                         protection = 'PBKDF2WithHMAC-SHA1AndDES-EDE3-CBC'
                     binary_key = PKCS8.wrap(binary_key, oid,
-                                            passphrase, protection)
+                                            passphrase, protection,
+                                            key_params=DerNull())
                     passphrase = None
         else:
             key_type = "PUBLIC KEY"
             binary_key = _create_subject_public_key_info(oid,
                                                          DerSequence([self.n,
-                                                                      self.e])
+                                                                      self.e]),
+                                                         DerNull()
                                                          )
 
         if format == 'DER':
@@ -364,6 +369,7 @@ class RsaKey(object):
 
     # Backward compatibility
     exportKey = export_key
+    publickey = public_key
 
     # Methods defined in PyCryptodome that we don't support anymore
     def sign(self, M, K):

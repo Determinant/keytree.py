@@ -7,10 +7,11 @@
 # Written in 2005 and 2006 by Peter Pearson and placed in the public domain.
 # Revision history:
 #   2008.11.14: Use pow(base, exponent, modulus) for modular_exp.
-#               Make gcd and lcm accept arbitrarly many arguments.
+#               Make gcd and lcm accept arbitrarily many arguments.
 
 from __future__ import division
 
+import sys
 from six import integer_types, PY2
 from six.moves import reduce
 
@@ -39,6 +40,10 @@ import warnings
 class Error(Exception):
     """Base class for exceptions in this module."""
 
+    pass
+
+
+class JacobiError(Error):
     pass
 
 
@@ -153,8 +158,10 @@ def jacobi(a, n):
     # table printed in HAC, and by extensive use in calculating
     # modular square roots.
 
-    assert n >= 3
-    assert n % 2 == 1
+    if not n >= 3:
+        raise JacobiError("n must be larger than 2")
+    if not n % 2 == 1:
+        raise JacobiError("n must be odd")
     a = a % n
     if a == 0:
         return 0
@@ -201,9 +208,8 @@ def square_root_mod_prime(a, p):
         d = pow(a, (p - 1) // 4, p)
         if d == 1:
             return pow(a, (p + 3) // 8, p)
-        if d == p - 1:
-            return (2 * a * pow(4 * a, (p - 5) // 8, p)) % p
-        raise RuntimeError("Shouldn't get here.")
+        assert d == p - 1
+        return (2 * a * pow(4 * a, (p - 5) // 8, p)) % p
 
     if PY2:
         # xrange on python2 can take integers representable as C long only
@@ -214,53 +220,63 @@ def square_root_mod_prime(a, p):
         if jacobi(b * b - 4 * a, p) == -1:
             f = (a, -b, 1)
             ff = polynomial_exp_mod((0, 1), (p + 1) // 2, f, p)
-            assert ff[1] == 0
+            if ff[1]:
+                raise SquareRootError("p is not prime")
             return ff[0]
     raise RuntimeError("No b found.")
 
 
-if GMPY2:
+# because all the inverse_mod code is arch/environment specific, and coveralls
+# expects it to execute equal number of times, we need to waive it by
+# adding the "no branch" pragma to all branches
+if GMPY2:  # pragma: no branch
 
     def inverse_mod(a, m):
         """Inverse of a mod m."""
-        if a == 0:
+        if a == 0:  # pragma: no branch
             return 0
         return powmod(a, -1, m)
 
-
-elif GMPY:
+elif GMPY:  # pragma: no branch
 
     def inverse_mod(a, m):
         """Inverse of a mod m."""
-        # while libgmp likely does support inverses modulo, it is accessible
-        # only using the native `pow()` function, and `pow()` sanity checks
-        # the parameters before passing them on to underlying implementation
-        # on Python2
-        if a == 0:
+        # while libgmp does support inverses modulo, it is accessible
+        # only using the native `pow()` function, and `pow()` in gmpy sanity
+        # checks the parameters before passing them on to underlying
+        # implementation
+        if a == 0:  # pragma: no branch
             return 0
         a = mpz(a)
         m = mpz(m)
 
         lm, hm = mpz(1), mpz(0)
         low, high = a % m, m
-        while low > 1:
+        while low > 1:  # pragma: no branch
             r = high // low
             lm, low, hm, high = hm - lm * r, high - low * r, lm, low
 
         return lm % m
 
+elif sys.version_info >= (3, 8):  # pragma: no branch
 
-else:
+    def inverse_mod(a, m):
+        """Inverse of a mod m."""
+        if a == 0:  # pragma: no branch
+            return 0
+        return pow(a, -1, m)
+
+else:  # pragma: no branch
 
     def inverse_mod(a, m):
         """Inverse of a mod m."""
 
-        if a == 0:
+        if a == 0:  # pragma: no branch
             return 0
 
         lm, hm = 1, 0
         low, high = a % m, m
-        while low > 1:
+        while low > 1:  # pragma: no branch
             r = high // low
             lm, low, hm, high = hm - lm * r, high - low * r, lm, low
 
@@ -321,7 +337,6 @@ def factorization(n):
         return []
 
     result = []
-    d = 2
 
     # Test the small primes:
 
@@ -374,7 +389,7 @@ def phi(n):  # pragma: no cover
     warnings.warn(
         "Function is unused by library code. If you use this code, "
         "please open an issue in "
-        "https://github.com/warner/python-ecdsa",
+        "https://github.com/tlsfuzzer/python-ecdsa",
         DeprecationWarning,
     )
 
@@ -404,7 +419,7 @@ def carmichael(n):  # pragma: no cover
     warnings.warn(
         "Function is unused by library code. If you use this code, "
         "please open an issue in "
-        "https://github.com/warner/python-ecdsa",
+        "https://github.com/tlsfuzzer/python-ecdsa",
         DeprecationWarning,
     )
 
@@ -419,7 +434,7 @@ def carmichael_of_factorized(f_list):  # pragma: no cover
     warnings.warn(
         "Function is unused by library code. If you use this code, "
         "please open an issue in "
-        "https://github.com/warner/python-ecdsa",
+        "https://github.com/tlsfuzzer/python-ecdsa",
         DeprecationWarning,
     )
 
@@ -439,7 +454,7 @@ def carmichael_of_ppower(pp):  # pragma: no cover
     warnings.warn(
         "Function is unused by library code. If you use this code, "
         "please open an issue in "
-        "https://github.com/warner/python-ecdsa",
+        "https://github.com/tlsfuzzer/python-ecdsa",
         DeprecationWarning,
     )
 
@@ -456,7 +471,7 @@ def order_mod(x, m):  # pragma: no cover
     warnings.warn(
         "Function is unused by library code. If you use this code, "
         "please open an issue in "
-        "https://github.com/warner/python-ecdsa",
+        "https://github.com/tlsfuzzer/python-ecdsa",
         DeprecationWarning,
     )
 
@@ -482,7 +497,7 @@ def largest_factor_relatively_prime(a, b):  # pragma: no cover
     warnings.warn(
         "Function is unused by library code. If you use this code, "
         "please open an issue in "
-        "https://github.com/warner/python-ecdsa",
+        "https://github.com/tlsfuzzer/python-ecdsa",
         DeprecationWarning,
     )
 
@@ -507,7 +522,7 @@ def kinda_order_mod(x, m):  # pragma: no cover
     warnings.warn(
         "Function is unused by library code. If you use this code, "
         "please open an issue in "
-        "https://github.com/warner/python-ecdsa",
+        "https://github.com/tlsfuzzer/python-ecdsa",
         DeprecationWarning,
     )
 

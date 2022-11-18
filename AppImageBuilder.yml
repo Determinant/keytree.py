@@ -5,7 +5,7 @@ script:
   - cp bech32.py  AppDir/usr/src
   - cp keytree.py  AppDir/usr/src
   - cp setup.py  AppDir/usr/src
-  - python3.9 -m pip install -t AppDir/usr/src/frozen_deps AppDir/usr/src
+  - python3.10 -m pip install -t AppDir/usr/src/frozen_deps AppDir/usr/src
   - rm -rf AppDir/usr/src/frozen_deps/Cryptodome/SelfTest
 
 
@@ -16,8 +16,8 @@ AppDir:
     id: org.ted.keytree
     name: keytree
     icon: utilities-terminal
-    version: 0.1.6
-    exec: usr/bin/python3.9
+    version: 0.1.7
+    exec: usr/bin/python3.10
     exec_args: $APPDIR/usr/src/keytree.py $@
 
   apt:
@@ -28,7 +28,7 @@ AppDir:
       - sourceline: 'deb [arch=amd64] http://ppa.launchpad.net/deadsnakes/ppa/ubuntu focal main'
         key_url: 'http://keyserver.ubuntu.com/pks/lookup?op=get&search=0xBA6932366A755776'
     include:
-      - python3.9
+      - python3.10
     exclude: []
 
   runtime:

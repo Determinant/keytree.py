@@ -13,10 +13,17 @@ except ImportError:  # pragma: no cover
         "sha384",
         "sha512",
     ]
+# skip algorithms broken by change to OpenSSL 3.0 and early versions
+# of hashlib that list algorithms that require the legacy provider to work
+# https://bugs.python.org/issue38820
+algorithms_available = [
+    i
+    for i in algorithms_available
+    if i not in ("mdc2", "md2", "md4", "whirlpool", "ripemd160")
+]
 from functools import partial
 import pytest
 import sys
-from six import binary_type
 import hypothesis.strategies as st
 from hypothesis import note, assume, given, settings, example
 
@@ -24,7 +31,7 @@ from .keys import SigningKey
 from .keys import BadSignatureError
 from .util import sigencode_der, sigencode_string
 from .util import sigdecode_der, sigdecode_string
-from .curves import curves, NIST256p
+from .curves import curves
 from .der import (
     encode_integer,
     encode_bitstring,
@@ -33,6 +40,7 @@ from .der import (
     encode_sequence,
     encode_constructed,
 )
+from .ellipticcurve import CurveEdTw
 
 
 example_data = b"some data to sign"
@@ -174,7 +182,7 @@ def st_random_der_ecdsa_sig_value(draw):
     note("Configuration: {0}".format(name))
     order = int(verifying_key.curve.order)
 
-    # the encode_integer doesn't suport negative numbers, would be nice
+    # the encode_integer doesn't support negative numbers, would be nice
     # to generate them too, but we have coverage for remove_integer()
     # verifying that it doesn't accept them, so meh.
     # Test all numbers around the ones that can show up (around order)
@@ -227,7 +235,7 @@ def st_der_bit_string(draw, *args, **kwargs):
     if data:
         unused = draw(st.integers(min_value=0, max_value=7))
         data = bytearray(data)
-        data[-1] &= -(2 ** unused)
+        data[-1] &= -(2**unused)
         data = bytes(data)
     else:
         unused = 0
@@ -258,9 +266,9 @@ def st_der_oid(draw):
     if first < 2:
         second = draw(st.integers(min_value=0, max_value=39))
     else:
-        second = draw(st.integers(min_value=0, max_value=2 ** 512))
+        second = draw(st.integers(min_value=0, max_value=2**512))
     rest = draw(
-        st.lists(st.integers(min_value=0, max_value=2 ** 512), max_size=50)
+        st.lists(st.integers(min_value=0, max_value=2**512), max_size=50)
     )
     return encode_oid(first, second, *rest)
 
@@ -275,9 +283,9 @@ def st_der():
     """
     return st.recursive(
         st.just(b"")
-        | st_der_integer(max_value=2 ** 4096)
-        | st_der_bit_string(max_size=1024 ** 2)
-        | st_der_octet_string(max_size=1024 ** 2)
+        | st_der_integer(max_value=2**4096)
+        | st_der_bit_string(max_size=1024**2)
+        | st_der_octet_string(max_size=1024**2)
         | st_der_null()
         | st_der_oid(),
         lambda children: st.builds(
@@ -307,7 +315,7 @@ def test_random_der_as_signature(params, der):
 
 
 @settings(**params)
-@given(st.sampled_from(keys_and_sigs), st.binary(max_size=1024 ** 2))
+@given(st.sampled_from(keys_and_sigs), st.binary(max_size=1024**2))
 @example(
     keys_and_sigs[0], encode_sequence(encode_integer(0), encode_integer(0))
 )
@@ -334,11 +342,23 @@ keys_and_string_sigs = [
         ),
     )
     for name, verifying_key, sig in keys_and_sigs
+    if not isinstance(verifying_key.curve.curve, CurveEdTw)
 ]
 """
 Name of the curve+hash combination, VerifyingKey and signature as a
 byte string.
 """
+
+
+keys_and_string_sigs += [
+    (
+        name,
+        verifying_key,
+        sig,
+    )
+    for name, verifying_key, sig in keys_and_sigs
+    if isinstance(verifying_key.curve.curve, CurveEdTw)
+]
 
 
 @settings(**params)

@@ -13,7 +13,7 @@ from functools import lru_cache
 from hashlib import sha256
 from typing import Mapping, Union
 
-__version__ = '2.1.0'
+__version__ = '2.1.1'
 
 # 58 character alphabet used
 BITCOIN_ALPHABET = \
@@ -102,7 +102,7 @@ def b58decode_int(
             decimal = decimal * base + map[char]
     except KeyError as e:
         raise ValueError(
-            "Invalid character <{char}>".format(char=chr(e.args[0]))
+            "Invalid character {!r}".format(chr(e.args[0]))
         ) from None
     return decimal
 

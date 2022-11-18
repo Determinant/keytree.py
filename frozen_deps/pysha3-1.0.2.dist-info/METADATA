@@ -29,6 +29,7 @@ Classifier: Programming Language :: Python :: 3
 Classifier: Programming Language :: Python :: 3.4
 Classifier: Programming Language :: Python :: 3.5
 Classifier: Topic :: Security :: Cryptography
+License-File: LICENSE
 
 ======
 pysha3
@@ -246,6 +247,4 @@ pysha3 0.1
 - first release
 
 - based on KeccakReferenceAndOptimized-3.2.zip
-
-
 

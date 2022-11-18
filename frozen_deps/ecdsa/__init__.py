@@ -1,3 +1,6 @@
+# while we don't use six in this file, we did bundle it for a long time, so
+# keep as part of module in a virtual way (through __all__)
+import six
 from .keys import (
     SigningKey,
     VerifyingKey,
@@ -19,6 +22,12 @@ from .curves import (
     BRAINPOOLP320r1,
     BRAINPOOLP384r1,
     BRAINPOOLP512r1,
+    SECP112r1,
+    SECP112r2,
+    SECP128r1,
+    SECP160r1,
+    Ed25519,
+    Ed448,
 )
 from .ecdh import (
     ECDH,
@@ -28,13 +37,9 @@ from .ecdh import (
     InvalidSharedSecretError,
 )
 from .der import UnexpectedDER
+from . import _version
 
-# This code comes from http://github.com/warner/python-ecdsa
-from ._version import get_versions
-
-__version__ = get_versions()["version"]
-del get_versions
-
+# This code comes from http://github.com/tlsfuzzer/python-ecdsa
 __all__ = [
     "curves",
     "der",
@@ -72,5 +77,14 @@ _hush_pyflakes = [
     BRAINPOOLP320r1,
     BRAINPOOLP384r1,
     BRAINPOOLP512r1,
+    SECP112r1,
+    SECP112r2,
+    SECP128r1,
+    SECP160r1,
+    Ed25519,
+    Ed448,
+    six.b(""),
 ]
 del _hush_pyflakes
+
+__version__ = _version.get_versions()["version"]

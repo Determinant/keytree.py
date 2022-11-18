@@ -2,18 +2,41 @@ import os
 import shutil
 import subprocess
 import pytest
-from binascii import hexlify, unhexlify
+from binascii import unhexlify
 
-from .curves import NIST192p, NIST224p, NIST256p, NIST384p, NIST521p
+try:
+    import unittest2 as unittest
+except ImportError:
+    import unittest
+
+from .curves import (
+    NIST192p,
+    NIST224p,
+    NIST256p,
+    NIST384p,
+    NIST521p,
+    BRAINPOOLP160r1,
+)
 from .curves import curves
-from .ecdh import ECDH, InvalidCurveError, InvalidSharedSecretError, NoKeyError
+from .ecdh import (
+    ECDH,
+    InvalidCurveError,
+    InvalidSharedSecretError,
+    NoKeyError,
+    NoCurveError,
+)
 from .keys import SigningKey, VerifyingKey
+from .ellipticcurve import CurveEdTw
 
 
 @pytest.mark.parametrize(
-    "vcurve", curves, ids=[curve.name for curve in curves]
+    "vcurve",
+    curves,
+    ids=[curve.name for curve in curves],
 )
 def test_ecdh_each(vcurve):
+    if isinstance(vcurve.curve, CurveEdTw):
+        pytest.skip("ECDH is not supported for Edwards curves")
     ecdh1 = ECDH(curve=vcurve)
     ecdh2 = ECDH(curve=vcurve)
 
@@ -23,6 +46,19 @@ def test_ecdh_each(vcurve):
 
     secret1 = ecdh1.generate_sharedsecret_bytes()
     secret2 = ecdh2.generate_sharedsecret_bytes()
+    assert secret1 == secret2
+
+
+def test_ecdh_both_keys_present():
+    key1 = SigningKey.generate(BRAINPOOLP160r1)
+    key2 = SigningKey.generate(BRAINPOOLP160r1)
+
+    ecdh1 = ECDH(BRAINPOOLP160r1, key1, key2.verifying_key)
+    ecdh2 = ECDH(private_key=key2, public_key=key1.verifying_key)
+
+    secret1 = ecdh1.generate_sharedsecret_bytes()
+    secret2 = ecdh2.generate_sharedsecret_bytes()
+
     assert secret1 == secret2
 
 
@@ -36,6 +72,44 @@ def test_ecdh_no_public_key():
 
     with pytest.raises(NoKeyError):
         ecdh1.generate_sharedsecret_bytes()
+
+
+class TestECDH(unittest.TestCase):
+    def test_load_key_from_wrong_curve(self):
+        ecdh1 = ECDH()
+        ecdh1.set_curve(NIST192p)
+
+        key1 = SigningKey.generate(BRAINPOOLP160r1)
+
+        with self.assertRaises(InvalidCurveError) as e:
+            ecdh1.load_private_key(key1)
+
+        self.assertIn("Curve mismatch", str(e.exception))
+
+    def test_generate_without_curve(self):
+        ecdh1 = ECDH()
+
+        with self.assertRaises(NoCurveError) as e:
+            ecdh1.generate_private_key()
+
+        self.assertIn("Curve must be set", str(e.exception))
+
+    def test_load_bytes_without_curve_set(self):
+        ecdh1 = ECDH()
+
+        with self.assertRaises(NoCurveError) as e:
+            ecdh1.load_private_key_bytes(b"\x01" * 32)
+
+        self.assertIn("Curve must be set", str(e.exception))
+
+    def test_set_curve_from_received_public_key(self):
+        ecdh1 = ECDH()
+
+        key1 = SigningKey.generate(BRAINPOOLP160r1)
+
+        ecdh1.load_received_public_key(key1.verifying_key)
+
+        self.assertEqual(ecdh1.curve, BRAINPOOLP160r1)
 
 
 def test_ecdh_wrong_public_key_curve():
@@ -293,25 +367,27 @@ OPENSSL_SUPPORTED_CURVES = set(
 
 
 @pytest.mark.parametrize(
-    "vcurve", curves, ids=[curve.name for curve in curves]
+    "vcurve",
+    curves,
+    ids=[curve.name for curve in curves],
 )
 def test_ecdh_with_openssl(vcurve):
+    if isinstance(vcurve.curve, CurveEdTw):
+        pytest.skip("Edwards curves are not supported for ECDH")
+
     assert vcurve.openssl_name
 
     if vcurve.openssl_name not in OPENSSL_SUPPORTED_CURVES:
         pytest.skip("system openssl does not support " + vcurve.openssl_name)
-        return
 
     try:
         hlp = run_openssl("pkeyutl -help")
-        if hlp.find("-derive") == 0:
+        if hlp.find("-derive") == 0:  # pragma: no cover
             pytest.skip("system openssl does not support `pkeyutl -derive`")
-            return
-    except RunOpenSslError:
-        pytest.skip("system openssl does not support `pkeyutl -derive`")
-        return
+    except RunOpenSslError:  # pragma: no cover
+        pytest.skip("system openssl could not be executed")
 
-    if os.path.isdir("t"):
+    if os.path.isdir("t"):  # pragma: no branch
         shutil.rmtree("t")
     os.mkdir("t")
     run_openssl(
@@ -346,25 +422,20 @@ def test_ecdh_with_openssl(vcurve):
 
     assert secret1 == secret2
 
-    try:
-        run_openssl(
-            "pkeyutl -derive -inkey t/privkey1.pem -peerkey t/pubkey2.pem -out t/secret1"
-        )
-        run_openssl(
-            "pkeyutl -derive -inkey t/privkey2.pem -peerkey t/pubkey1.pem -out t/secret2"
-        )
-    except RunOpenSslError:
-        pytest.skip("system openssl does not support `pkeyutl -derive`")
-        return
+    run_openssl(
+        "pkeyutl -derive -inkey t/privkey1.pem -peerkey t/pubkey2.pem -out t/secret1"
+    )
+    run_openssl(
+        "pkeyutl -derive -inkey t/privkey2.pem -peerkey t/pubkey1.pem -out t/secret2"
+    )
 
     with open("t/secret1", "rb") as e:
         ssl_secret1 = e.read()
     with open("t/secret1", "rb") as e:
         ssl_secret2 = e.read()
 
-    if len(ssl_secret1) != vk1.curve.baselen:
-        pytest.skip("system openssl does not support `pkeyutl -derive`")
-        return
+    assert len(ssl_secret1) == vk1.curve.verifying_key_length // 2
+    assert len(secret1) == vk1.curve.verifying_key_length // 2
 
     assert ssl_secret1 == ssl_secret2
     assert secret1 == ssl_secret1
