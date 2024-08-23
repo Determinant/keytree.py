@@ -26,6 +26,27 @@ If you instead do a normal pip install (``pip3 install --user .``) and use
 ``keytree.py`` (without ``./`` prefix), it will use the latest deps fetched by
 pip.
 
+Security
+--------
+
+- The script was written with minimalist design (short, easy to check the code)
+  . But you should use at your own risk and on an OS/platform/machine that you
+  can trust. There is NO side-channel attack prevention or special treatment of
+  the memory.
+
+- The dependencies should be safe (but do your own check!) because the part under ``frozen_deps/`` only contains:
+
+  - Some standard AES provided by ``pycryptodomex``
+  - Curve manipulation provided by ``ecdsa``
+  - Base58 encoding provided by ``base58``
+  - Python 2 and 3 compatibility library ``six``
+  - SHA3 calcuation provided by ``pysha3``
+
+  And web3-specific modules are pretty short:
+  - ``mnemonic.py``: 284 lines, to generate/manipulate mnemonics
+  - ``bech32.py``: 123 lines,  to Bech32-format addresses (for AVAX addresses)
+  - ``shamir.py``: 113 lines, to implement a minimalist Shamir's secret sharing that's compatible with Ava Labs' implementation (https://github.com/ava-labs/mnemonic-shamir-secret-sharing-cli)
+
 Portable Binary
 ---------------
 
