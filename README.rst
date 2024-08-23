@@ -15,7 +15,7 @@ Examples
 - Use arbitrary UTF-8 string as your mnemonic ``./keytree.py --custom --save mykeystore.json``
 - Show Fuji testnet address format ``./keytree.py <your options> --hrp fuji``
 - Generate a new mnemonic and also use a 2/3 Shamir's secret sharing (3 shares, recoverable with any 2 of them): ``./keytree.py --gen-mnemonic --gen-shamir --shamir-threshold 2 --shamir-num 3``
-- Recover a new mnemonic from the previous example and save it to a keystore file: ``./keytree.py --recover-shamir --shamir-threshold 2 --shamir-num 3 --save mykeystore.json``
+- Recover a new mnemonic from the previous example and save it to a keystore file: ``./keytree.py --recover-shamir 1,2 --shamir-threshold 2 --shamir-num 3 --save mykeystore.json``
 
 
 Caveat
@@ -45,7 +45,7 @@ Security
 
   - ``mnemonic.py``: 284 lines, to generate/manipulate mnemonics
   - ``bech32.py``: 123 lines,  to Bech32-format addresses (for AVAX addresses)
-  - ``shamir.py``: 113 lines, to implement a minimalist Shamir's secret sharing that's compatible with Ava Labs' implementation (https://github.com/ava-labs/mnemonic-shamir-secret-sharing-cli)
+  - ``shamir.py``: 80 lines, to implement a minimalist Shamir's secret sharing that's compatible with Ava Labs' implementation (https://github.com/ava-labs/mnemonic-shamir-secret-sharing-cli)
 
 Portable Binary
 ---------------
