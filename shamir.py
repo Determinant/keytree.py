@@ -45,7 +45,6 @@ def _divmod(num, a, p):
         y, last_y = last_y - quot * y, y
     return num * last_x
 
-
 def _lagrange_interpolate(x, x_s, y_s, p):
     k = len(x_s)
     assert k == len(set(x_s)), "points must be distinct"
@@ -55,19 +54,19 @@ def _lagrange_interpolate(x, x_s, y_s, p):
         for v in vals:
             r = (r * v) % p
         return r
-    nums = []  # avoid inexact division
-    dens = []
+    l_s = []
+    n_all = prod(x - x_j for x_j in x_s)
     for i in range(k):
         others = list(x_s)
-        cur = others.pop(i)
-        # cur is the current i-th term: x_i
-        # others is the list of terms excluding the current i-th term: x_j such that j != i
-        nums.append(prod(x - o for o in others))  # \Prod_{j \neq i}{(x - x_j)}
-        dens.append(prod(cur - o for o in others))  # \Prod_{j \neq i}{(x_i - x_j)}
-    den = prod(dens)
-    num = sum([_divmod((nums[i] * den * y_s[i]) % p, dens[i], p)
-               for i in range(k)])
-    return (_divmod(num, den, p) + p) % p
+        x_i = others.pop(i)
+        # \Prod_{j \neq i}{(x - x_j)} / \Prod_{j \neq i}{(x_i - x_j)}
+        l_s.append(_divmod(
+            n_all,
+            (prod(x_i - x_j for x_j in others) * (x - x_i)) % p, p))
+    sum = 0
+    for (y, l) in zip(y_s, l_s):
+        sum = (sum + (y * l) % p) % p
+    return (sum + p) % p
 
 
 def combine(shares, prime=_PRIME):

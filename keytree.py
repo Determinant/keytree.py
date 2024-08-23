@@ -47,7 +47,7 @@ import hmac
 import unicodedata
 import json
 from getpass import getpass as _getpass
-from itertools import zip_longest
+from itertools import zip_longest, combinations
 
 import bech32
 import mnemonic
@@ -376,8 +376,8 @@ def shamir256_combine(shares):
         shares = [(i, int.from_bytes(bytearray(p), 'big')) for (i, p) in shares]
         try:
             secret = shamir.combine(shares)
-        except ValueError:
-            raise KeytreeError("invalid Shamir recovery input")
+        except ValueError as e:
+            raise KeytreeError("invalid Shamir recovery input", e)
         if secret.bit_length() > 256:
             raise KeytreeError("Shamir result is too long")
         result.extend(secret.to_bytes(32, 'big'))
@@ -496,13 +496,32 @@ if __name__ == '__main__':
                 entropy = None
             if entropy:
                 shares = shamir256_split(mgen.to_entropy(words), args.shamir_threshold, args.shamir_num)
-                for idx, share in enumerate(shares):
-                    print("KEEP THIS PRIVATE (share) #{} {}".format(idx + 1, mgen.to_mnemonic(share)))
+                shares = [mgen.to_mnemonic(share) for share in shares]
+
+                # checking
+                for case in combinations(range(args.shamir_num), args.shamir_threshold):
+                    verify = [(i + 1, mgen.to_entropy(shares[i])) for i in case]
+                    recovered = mgen.to_mnemonic(shamir256_combine(verify))
+                    if words != recovered:
+                        raise KeytreeError('Shamir sanity check failed: {} = {}'.format(case, recovered))
+                    print("checked {}".format(case))
             else:
                 shares = shamir256_split(seed, args.shamir_threshold, args.shamir_num)
-                for idx, share in enumerate(shares):
-                    words = mgen.to_mnemonic(share[:32]) + ' ' + mgen.to_mnemonic(share[32:])
-                    print("KEEP THIS PRIVATE (share) #{} {}".format(idx + 1, words))
+                shares = [mgen.to_mnemonic(share[:32]) + ' ' + mgen.to_mnemonic(share[32:]) for share in shares]
+
+                # checking
+                for case in combinations(range(args.shamir_num), args.shamir_threshold):
+                    verify = []
+                    for i in case:
+                        swords = shares[i].split()
+                        verify.append((i + 1, mgen.to_entropy(' '.join(swords[:24])) + mgen.to_entropy(' '.join(swords[24:]))))
+                    recovered = shamir256_combine(verify)
+                    if seed != recovered:
+                        raise KeytreeError('Shamir sanity check failed: {} = {}'.format(case, recovered.hex()))
+                    print("checked {}".format(case))
+
+            for idx, share in enumerate(shares):
+                print("KEEP THIS PRIVATE (share) #{} {}".format(idx + 1, share))
 
         # derive the keys at the requested paths
 
