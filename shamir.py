@@ -51,10 +51,10 @@ def _lagrange_interpolate(x, x_s, y_s, p):
     assert k == len(set(x_s)), "points must be distinct"
 
     def prod(vals):  # product of inputs
-        accum = 1
+        r = 1
         for v in vals:
-            accum *= v
-        return accum
+            r = (r * v) % p
+        return r
     nums = []  # avoid inexact division
     dens = []
     for i in range(k):
@@ -65,7 +65,7 @@ def _lagrange_interpolate(x, x_s, y_s, p):
         nums.append(prod(x - o for o in others))  # \Prod_{j \neq i}{(x - x_j)}
         dens.append(prod(cur - o for o in others))  # \Prod_{j \neq i}{(x_i - x_j)}
     den = prod(dens)
-    num = sum([_divmod(nums[i] * den * y_s[i] % p, dens[i], p)
+    num = sum([_divmod((nums[i] * den * y_s[i]) % p, dens[i], p)
                for i in range(k)])
     return (_divmod(num, den, p) + p) % p
 
