@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.10
 # MIT License
 #
 # Copyright (c) 2020 Ted Yin <tederminant@gmail.com>
@@ -47,6 +47,7 @@ import hmac
 import unicodedata
 import json
 from getpass import getpass as _getpass
+from itertools import zip_longest
 
 import bech32
 import mnemonic
@@ -58,6 +59,7 @@ from sha3 import keccak_256
 from uuid import uuid4
 from Cryptodome.Cipher import AES
 from Cryptodome.Util import Counter
+import shamir
 
 
 def getpass(prompt):
@@ -124,7 +126,7 @@ def is_infinity(P):
 # parse256(p): interprets a 32-byte sequence as a 256-bit number, most
 # significant byte first.
 def parse256(p):
-    assert(len(p) == 32)
+    assert len(p) == 32
     return int.from_bytes(p, byteorder='big')
 
 
@@ -346,6 +348,42 @@ def save_to_mew(priv_keys, n=1 << 18, p=1, r=8, dklen=32):
         raise KeytreeError("failed while saving")
 
 
+def to_chunks(n, iterable):
+    return zip_longest(*[iter(iterable)]*n, fillvalue=0)
+
+def shamir256_split(secret, t, n):
+    shares = [bytearray() for i in range(n)]
+    for chunk in to_chunks(32, secret):
+        secret = int.from_bytes(chunk, 'big')
+        while True:
+            points = shamir.split(secret, t, n)
+            good = True
+            for p in points:
+                if p.bit_length() > 256:
+                    good = False
+                    break
+            if good:
+                # all shares are within 256 bits
+                for (p, s) in zip(points, shares):
+                    s.extend(p.to_bytes(32, 'big'))
+                break
+    return shares
+
+
+def shamir256_combine(shares):
+    result = bytearray()
+    for shares in zip(*[[(i, g) for g in to_chunks(32, s)] for (i, s) in shares]):
+        shares = [(i, int.from_bytes(bytearray(p), 'big')) for (i, p) in shares]
+        try:
+            secret = shamir.combine(shares)
+        except ValueError:
+            raise KeytreeError("invalid Shamir recovery input")
+        if secret.bit_length() > 256:
+            raise KeytreeError("Shamir result is too long")
+        result.extend(secret.to_bytes(32, 'big'))
+    return result
+
+
 metamask_path = r"44'/60'/0'/0"
 avax_path = r"44'/9000'/0'/0"
 
@@ -355,6 +393,10 @@ if __name__ == '__main__':
     parser.add_argument('--save', type=str, default=None, help='save mnemonic to a file (AVAX Wallet compatible)')
     parser.add_argument('--export-mew', action='store_true', default=False, help='export keys to MEW keystore files (mnemonic is NOT saved, only keys are saved)')
     parser.add_argument('--show-private', action='store_true', default=False, help='also show private keys and the mnemonic')
+    parser.add_argument('--gen-shamir', action='store_true', default=False, help='generate Shamir\'s secret shares')
+    parser.add_argument('--shamir-threshold', type=int, default=2, help='Shamir\'s secret sharing threshold (number of shares to decode)')
+    parser.add_argument('--shamir-num', type=int, default=3, help='Shamir\'s secret sharing number (total number of shares)')
+    parser.add_argument('--recover-shamir', type=str, default=None, help='recover the secret from Shamir shares')
     parser.add_argument('--custom', action='store_true', default=False, help='use an arbitrary word combination as mnemonic')
     parser.add_argument('--seed', action='store_true', default=False, help='load mnemonic from seed')
     parser.add_argument('--path', default=avax_path, help="path prefix for key deriving (e.g. \"{}\" for Metamask)".format(metamask_path))
@@ -371,13 +413,40 @@ if __name__ == '__main__':
         for arg in unknown:
             if len(arg) > 0:
                 raise KeytreeError("invalid argument: `{}`".format(arg))
+        shares = []
         try:
+            mgen = mnemonic.Mnemonic(args.lang)
             if args.gen_mnemonic:
-                mgen = mnemonic.Mnemonic(args.lang)
                 words = mgen.generate(256)
             else:
                 if args.load:
                     words = load_from_keystore(args.load)
+                elif args.recover_shamir:
+                    try:
+                        idxes = [int(i) for i in args.recover_shamir.split(',')]
+                    except ValueError:
+                        raise KeytreeError("invalid Shamir share spec, should be something like \"1,2\"")
+                    custom_mnemonic = None
+                    for idx in idxes:
+                        swords = getpass('Enter the mnemonic for Shamir share #{}: '.format(idx))
+                        if len(swords) == 48:
+                            if not custom_mnemonic:
+                                raise KeytreeError("invalid Shamir share format")
+                            custom_mnemonic = True
+                            share = mgen.to_entropy(swords[:24]) + mgen.to_entropy(swords[24:])
+                        else:
+                            if custom_mnemonic:
+                                raise KeytreeError("invalid Shamir share format")
+                            custom_mnemonic = False
+                            try:
+                                share = mgen.to_entropy(swords)
+                            except ValueError:
+                                raise KeytreeError('invalid mnemonic')
+                        shares.append((idx, share))
+                    if custom_mnemonic:
+                        seed = shamir256_combine(shares)
+                    else:
+                        words = mgen.to_mnemonic(shamir256_combine(shares))
                 elif not args.seed:
                     words = getpass('Enter the mnemonic: ').strip()
                     if not args.custom:
@@ -402,6 +471,21 @@ if __name__ == '__main__':
             if not args.seed:
                 print("KEEP THIS PRIVATE (mnemonic): {}".format(words))
             print("KEEP THIS PRIVATE (seed): {}".format(seed.hex()))
+        if args.shamir_threshold:
+            if args.shamir_num > 20:
+                raise KeytreeError('Shamir threshold should be <= 20')
+            if args.shamir_threshold < 2 or args.shamir_threshold > args.shamir_num:
+                raise KeytreeError('Shamir threshold should be (2, N]')
+        if args.gen_shamir:
+            if args.seed:
+                shares = shamir256_split(seed, args.shamir_threshold, args.shamir_num)
+                for idx, share in enumerate(shares):
+                    words = mgen.to_mnemonic(share[:32]) + mgen.to_mnemonic(share[32:])
+                    print("KEEP THIS PRIVATE: secret_{}: {}".format(idx + 1, words))
+            else:
+                shares = shamir256_split(mgen.to_entropy(words), args.shamir_threshold, args.shamir_num)
+                for idx, share in enumerate(shares):
+                    print("KEEP THIS PRIVATE: secret_{}: {}".format(idx + 1, mgen.to_mnemonic(share)))
         gen = BIP32(seed)
         if args.start_idx < 0 or args.end_idx < 0:
             raise KeytreeError("invalid start/end index")
