@@ -14,6 +14,9 @@ Examples
   screen)
 - Use arbitrary UTF-8 string as your mnemonic ``./keytree.py --custom --save mykeystore.json``
 - Show Fuji testnet address format ``./keytree.py <your options> --hrp fuji``
+- Generate a new mnemonic and also use a 2/3 Shamir's secret sharing (3 shares, recoverable with any 2 of them): ``./keytree.py --gen-mnemonic --gen-shamir --shamir-threshold 2 --shamir-num 3``
+- Recover a new mnemonic from the previous example and save it to a keystore file: ``./keytree.py --recover-shamir --shamir-threshold 2 --shamir-num 3 --save mykeystore.json``
+
 
 Caveat
 ------

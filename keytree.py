@@ -413,51 +413,48 @@ if __name__ == '__main__':
         for arg in unknown:
             if len(arg) > 0:
                 raise KeytreeError("invalid argument: `{}`".format(arg))
-        shares = []
-        try:
-            mgen = mnemonic.Mnemonic(args.lang)
-            if args.gen_mnemonic:
-                words = mgen.generate(256)
-            else:
-                if args.load:
-                    words = load_from_keystore(args.load)
-                elif args.recover_shamir:
+        mgen = mnemonic.Mnemonic(args.lang)
+        words = None
+        seed = None
+        # here, we check the flags to see how to obtain the mnemonic phrase or just the derived seed of it:
+        if args.gen_mnemonic:
+            # generate a new mnemonic
+            words = mgen.generate(256)
+        elif args.load:
+            # load from a JSON keystore file
+            try:
+                words = load_from_keystore(args.load)
+            except FileNotFoundError:
+                raise KeytreeError("invalid language")
+        elif args.recover_shamir:
+            # recover from a previously set up Shamir's secret sharing
+            try:
+                idxes = [int(i) for i in args.recover_shamir.split(',')]
+            except ValueError:
+                raise KeytreeError("invalid Shamir sharing spec, should be something like \"1,2\"")
+            custom_mnemonic = None
+            shares = []
+            for idx in idxes:
+                swords = getpass('Enter the mnemonic for Shamir share #{}: '.format(idx)).split()
+                if len(swords) == 48:
+                    if custom_mnemonic == False:
+                        raise KeytreeError("invalid Shamir share format")
+                    custom_mnemonic = True
+                    share = mgen.to_entropy(' '.join(swords[:24])) + mgen.to_entropy(' '.join(swords[24:]))
+                else:
+                    if custom_mnemonic == True:
+                        raise KeytreeError("invalid Shamir share format")
+                    custom_mnemonic = False
                     try:
-                        idxes = [int(i) for i in args.recover_shamir.split(',')]
+                        share = mgen.to_entropy(' '.join(swords))
                     except ValueError:
-                        raise KeytreeError("invalid Shamir share spec, should be something like \"1,2\"")
-                    custom_mnemonic = None
-                    for idx in idxes:
-                        swords = getpass('Enter the mnemonic for Shamir share #{}: '.format(idx))
-                        if len(swords) == 48:
-                            if not custom_mnemonic:
-                                raise KeytreeError("invalid Shamir share format")
-                            custom_mnemonic = True
-                            share = mgen.to_entropy(swords[:24]) + mgen.to_entropy(swords[24:])
-                        else:
-                            if custom_mnemonic:
-                                raise KeytreeError("invalid Shamir share format")
-                            custom_mnemonic = False
-                            try:
-                                share = mgen.to_entropy(swords)
-                            except ValueError:
-                                raise KeytreeError('invalid mnemonic')
-                        shares.append((idx, share))
-                    if custom_mnemonic:
-                        seed = shamir256_combine(shares)
-                    else:
-                        words = mgen.to_mnemonic(shamir256_combine(shares))
-                elif not args.seed:
-                    words = getpass('Enter the mnemonic: ').strip()
-                    if not args.custom:
-                        mchecker = mnemonic.Mnemonic(args.lang)
-                        if not mchecker.check(words):
-                            raise KeytreeError("invalid mnemonic")
-        except FileNotFoundError:
-            raise KeytreeError("invalid language")
-        if args.end_idx < args.start_idx:
-            args.end_idx = args.start_idx + 1
-        if args.seed:
+                        raise KeytreeError('invalid mnemonic')
+                shares.append((idx, share))
+            if custom_mnemonic:
+                seed = shamir256_combine(shares)
+            else:
+                words = mgen.to_mnemonic(shamir256_combine(shares))
+        elif args.seed:
             seedstr = getpass('Enter the seed: ').strip()
             try:
                 seed = bytes.fromhex(seedstr)
@@ -466,26 +463,49 @@ if __name__ == '__main__':
             except ValueError:
                 raise KeytreeError("invalid seed")
         else:
+            words = getpass('Enter the mnemonic: ').strip()
+            if not args.custom:
+                mchecker = mnemonic.Mnemonic(args.lang)
+                if not mchecker.check(words):
+                    raise KeytreeError("invalid mnemonic")
+
+        if seed is None:
             seed = hashlib.pbkdf2_hmac('sha512', unicodedata.normalize('NFKD', words).encode("utf-8"), b"mnemonic", 2048)
+
+        if args.end_idx < args.start_idx:
+            args.end_idx = args.start_idx + 1
+
         if args.show_private or args.gen_mnemonic:
-            if not args.seed:
+            if words is not None:
                 print("KEEP THIS PRIVATE (mnemonic): {}".format(words))
             print("KEEP THIS PRIVATE (seed): {}".format(seed.hex()))
+
+        # generate Shamir shares if the user says so
+
         if args.shamir_threshold:
             if args.shamir_num > 20:
                 raise KeytreeError('Shamir threshold should be <= 20')
             if args.shamir_threshold < 2 or args.shamir_threshold > args.shamir_num:
                 raise KeytreeError('Shamir threshold should be (2, N]')
+
         if args.gen_shamir:
-            if args.seed:
-                shares = shamir256_split(seed, args.shamir_threshold, args.shamir_num)
-                for idx, share in enumerate(shares):
-                    words = mgen.to_mnemonic(share[:32]) + mgen.to_mnemonic(share[32:])
-                    print("KEEP THIS PRIVATE: secret_{}: {}".format(idx + 1, words))
-            else:
+            try:
+                entropy = mgen.to_entropy(words)
+            except (ValueError, LookupError):
+                # not a standard BIP mnemonic, let's fallback to seed mode
+                entropy = None
+            if entropy:
                 shares = shamir256_split(mgen.to_entropy(words), args.shamir_threshold, args.shamir_num)
                 for idx, share in enumerate(shares):
-                    print("KEEP THIS PRIVATE: secret_{}: {}".format(idx + 1, mgen.to_mnemonic(share)))
+                    print("KEEP THIS PRIVATE (share) #{} {}".format(idx + 1, mgen.to_mnemonic(share)))
+            else:
+                shares = shamir256_split(seed, args.shamir_threshold, args.shamir_num)
+                for idx, share in enumerate(shares):
+                    words = mgen.to_mnemonic(share[:32]) + ' ' + mgen.to_mnemonic(share[32:])
+                    print("KEEP THIS PRIVATE (share) #{} {}".format(idx + 1, words))
+
+        # derive the keys at the requested paths
+
         gen = BIP32(seed)
         if args.start_idx < 0 or args.end_idx < 0:
             raise KeytreeError("invalid start/end index")
