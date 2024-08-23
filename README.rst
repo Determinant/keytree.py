@@ -42,7 +42,8 @@ Security
   - Python 2 and 3 compatibility library ``six``
   - SHA3 calcuation provided by ``pysha3``
 
-  And web3-specific modules are pretty short:
+  Whereas web3-specific modules are pretty short:
+
   - ``mnemonic.py``: 284 lines, to generate/manipulate mnemonics
   - ``bech32.py``: 123 lines,  to Bech32-format addresses (for AVAX addresses)
   - ``shamir.py``: 113 lines, to implement a minimalist Shamir's secret sharing that's compatible with Ava Labs' implementation (https://github.com/ava-labs/mnemonic-shamir-secret-sharing-cli)
