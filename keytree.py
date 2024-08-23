@@ -436,19 +436,19 @@ if __name__ == '__main__':
             shares = []
             for idx in idxes:
                 swords = getpass('Enter the mnemonic for Shamir share #{}: '.format(idx)).split()
-                if len(swords) == 48:
-                    if custom_mnemonic == False:
-                        raise KeytreeError("invalid Shamir share format")
-                    custom_mnemonic = True
-                    share = mgen.to_entropy(' '.join(swords[:24])) + mgen.to_entropy(' '.join(swords[24:]))
-                else:
-                    if custom_mnemonic == True:
-                        raise KeytreeError("invalid Shamir share format")
-                    custom_mnemonic = False
-                    try:
+                try:
+                    if len(swords) == 48:
+                        if custom_mnemonic == False:
+                            raise KeytreeError("invalid Shamir share format")
+                        custom_mnemonic = True
+                        share = mgen.to_entropy(' '.join(swords[:24])) + mgen.to_entropy(' '.join(swords[24:]))
+                    else:
+                        if custom_mnemonic == True:
+                            raise KeytreeError("invalid Shamir share format")
+                        custom_mnemonic = False
                         share = mgen.to_entropy(' '.join(swords))
-                    except ValueError:
-                        raise KeytreeError('invalid mnemonic')
+                except (ValueError, LookupError):
+                    raise KeytreeError('invalid mnemonic')
                 shares.append((idx, share))
             if custom_mnemonic:
                 seed = shamir256_combine(shares)

@@ -30,40 +30,23 @@ def split(secret, minimum, shares, prime=_PRIME):
     return [y(poly, i, prime) for i in range(1, shares + 1)]
 
 
-# division in integers modulus p means finding the inverse of the denominator
-# modulo p and then multiplying the numerator by this inverse
-# (Note: inverse of A is B such that A*B % p == 1)
-# this can be computed via extended euclidean algorithm
-# http://en.wikipedia.org/wiki/Modular_multiplicative_inverse#Computation
-def _extended_gcd(a, b):
+def _divmod(num, a, p):
+    # extended gcd will find ax + py = gcd(a, p)
+    # so if p is a big prime and a < p, then ax + py = gcd(a, p) = 1,
+    # then y = 0, so ax = 1, x will be the multiplicative inverse for a modulo p
     x = 0
-    last_x = 1
     y = 1
+    last_x = 1
     last_y = 0
-    while b != 0:
-        quot = a // b
-        a, b = b,  a % b
+    while p != 0:
+        quot = a // p
+        a, p = p,  a % p
         x, last_x = last_x - quot * x, x
         y, last_y = last_y - quot * y, y
-    return last_x, last_y
-
-
-def _divmod(num, den, p):
-    '''
-    compute num / den modulo prime p
-    To explain what this means, the return
-    value will be such that the following is true:
-    den * _divmod(num, den, p) % p == num
-    '''
-    inv, _ = _extended_gcd(den, p)
-    return num * inv
+    return num * last_x
 
 
 def _lagrange_interpolate(x, x_s, y_s, p):
-    '''
-    Find the y-value for the given x, given n (x, y) points;
-    k points will define a polynomial of up to kth order
-    '''
     k = len(x_s)
     assert k == len(set(x_s)), "points must be distinct"
 
@@ -77,8 +60,10 @@ def _lagrange_interpolate(x, x_s, y_s, p):
     for i in range(k):
         others = list(x_s)
         cur = others.pop(i)
-        nums.append(prod(x - o for o in others))
-        dens.append(prod(cur - o for o in others))
+        # cur is the current i-th term: x_i
+        # others is the list of terms excluding the current i-th term: x_j such that j != i
+        nums.append(prod(x - o for o in others))  # \Prod_{j \neq i}{(x - x_j)}
+        dens.append(prod(cur - o for o in others))  # \Prod_{j \neq i}{(x_i - x_j)}
     den = prod(dens)
     num = sum([_divmod(nums[i] * den * y_s[i] % p, dens[i], p)
                for i in range(k)])
