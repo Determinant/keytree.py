@@ -31,7 +31,7 @@ from .keys import SigningKey
 from .keys import BadSignatureError
 from .util import sigencode_der, sigencode_string
 from .util import sigdecode_der, sigdecode_string
-from .curves import curves
+from .curves import curves, SECP112r2, SECP128r1
 from .der import (
     encode_integer,
     encode_bitstring,
@@ -53,6 +53,10 @@ hash_and_size = [
 """Pairs of hash names and their output sizes.
 Needed for pairing with curves as we don't support hashes
 bigger than order sizes of curves."""
+
+
+if "--fast" in sys.argv:  # pragma: no cover
+    curves = [SECP112r2, SECP128r1]
 
 
 keys_and_sigs = []
@@ -91,7 +95,7 @@ def test_signatures(verifying_key, signature):
 
 
 @st.composite
-def st_fuzzed_sig(draw, keys_and_sigs):
+def st_fuzzed_sig(draw, keys_and_sigs):  # pragma: no cover
     """
     Hypothesis strategy that generates pairs of VerifyingKey and malformed
     signatures created by fuzzing of a valid signature.
@@ -111,6 +115,7 @@ def st_fuzzed_sig(draw, keys_and_sigs):
     note("Remove bytes: {0}".format(to_remove))
 
     # decide which bytes of the original signature should be changed
+    xors = None
     if sig:  # pragma: no branch
         xors = draw(
             st.dictionaries(
@@ -153,12 +158,17 @@ if sys.version_info >= (2, 7):  # pragma: no branch
         HealthCheck.filter_too_much,
         HealthCheck.too_slow,
     ]
+if "--fast" in sys.argv:  # pragma: no cover
+    params["max_examples"] = 20
 
 slow_params = dict(params)
-slow_params["max_examples"] = 10
+if "--fast" in sys.argv:  # pragma: no cover
+    slow_params["max_examples"] = 1
+else:
+    slow_params["max_examples"] = 10
 
 
-@settings(**params)
+@settings(**slow_params)
 @given(st_fuzzed_sig(keys_and_sigs))
 def test_fuzzed_der_signatures(args):
     verifying_key, sig = args
@@ -168,7 +178,7 @@ def test_fuzzed_der_signatures(args):
 
 
 @st.composite
-def st_random_der_ecdsa_sig_value(draw):
+def st_random_der_ecdsa_sig_value(draw):  # pragma: no cover
     """
     Hypothesis strategy for selecting random values and encoding them
     to ECDSA-Sig-Value object::
@@ -214,7 +224,7 @@ def test_random_der_ecdsa_sig_value(params):
         verifying_key.verify(sig, example_data, sigdecode=sigdecode_der)
 
 
-def st_der_integer(*args, **kwargs):
+def st_der_integer(*args, **kwargs):  # pragma: no cover
     """
     Hypothesis strategy that returns a random positive integer as DER
     INTEGER.
@@ -226,7 +236,7 @@ def st_der_integer(*args, **kwargs):
 
 
 @st.composite
-def st_der_bit_string(draw, *args, **kwargs):
+def st_der_bit_string(draw, *args, **kwargs):  # pragma: no cover
     """
     Hypothesis strategy that returns a random DER BIT STRING.
     Parameters are passed to hypothesis.strategy.binary.
@@ -242,7 +252,7 @@ def st_der_bit_string(draw, *args, **kwargs):
     return encode_bitstring(data, unused)
 
 
-def st_der_octet_string(*args, **kwargs):
+def st_der_octet_string(*args, **kwargs):  # pragma: no cover
     """
     Hypothesis strategy that returns a random DER OCTET STRING object.
     Parameters are passed to hypothesis.strategy.binary
@@ -250,7 +260,7 @@ def st_der_octet_string(*args, **kwargs):
     return st.builds(encode_octet_string, st.binary(*args, **kwargs))
 
 
-def st_der_null():
+def st_der_null():  # pragma: no cover
     """
     Hypothesis strategy that returns DER NULL object.
     """
@@ -258,7 +268,7 @@ def st_der_null():
 
 
 @st.composite
-def st_der_oid(draw):
+def st_der_oid(draw):  # pragma: no cover
     """
     Hypothesis strategy that returns DER OBJECT IDENTIFIER objects.
     """
@@ -273,7 +283,7 @@ def st_der_oid(draw):
     return encode_oid(first, second, *rest)
 
 
-def st_der():
+def st_der():  # pragma: no cover
     """
     Hypothesis strategy that returns random DER structures.
 
@@ -281,22 +291,20 @@ def st_der():
     of a valid DER structure, sequence of valid DER objects or a constructed
     encoding of any of the above.
     """
-    return st.recursive(
+    return st.recursive(  # pragma: no branch
         st.just(b"")
         | st_der_integer(max_value=2**4096)
         | st_der_bit_string(max_size=1024**2)
         | st_der_octet_string(max_size=1024**2)
         | st_der_null()
         | st_der_oid(),
-        lambda children: st.builds(
-            lambda x: encode_octet_string(x), st.one_of(children)
-        )
+        lambda children: st.builds(encode_octet_string, st.one_of(children))
         | st.builds(lambda x: encode_bitstring(x, 0), st.one_of(children))
         | st.builds(
             lambda x: encode_sequence(*x), st.lists(children, max_size=200)
         )
         | st.builds(
-            lambda tag, x: encode_constructed(tag, x),
+            encode_constructed,
             st.integers(min_value=0, max_value=0x3F),
             st.one_of(children),
         ),
@@ -304,7 +312,7 @@ def st_der():
     )
 
 
-@settings(**params)
+@settings(**slow_params)
 @given(st.sampled_from(keys_and_sigs), st_der())
 def test_random_der_as_signature(params, der):
     """Check if random DER structures are rejected as signature"""
@@ -314,7 +322,7 @@ def test_random_der_as_signature(params, der):
         verifying_key.verify(der, example_data, sigdecode=sigdecode_der)
 
 
-@settings(**params)
+@settings(**slow_params)
 @given(st.sampled_from(keys_and_sigs), st.binary(max_size=1024**2))
 @example(
     keys_and_sigs[0], encode_sequence(encode_integer(0), encode_integer(0))
@@ -361,7 +369,7 @@ keys_and_string_sigs += [
 ]
 
 
-@settings(**params)
+@settings(**slow_params)
 @given(st_fuzzed_sig(keys_and_string_sigs))
 def test_fuzzed_string_signatures(params):
     verifying_key, sig = params

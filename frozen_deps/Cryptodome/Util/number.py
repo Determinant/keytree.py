@@ -51,12 +51,8 @@ def size (N):
     """Returns the size of the number N in bits."""
 
     if N < 0:
-        raise ValueError("Size in bits only avialable for non-negative numbers")
-
-    bits = 0
-    while N >> bits:
-        bits += 1
-    return bits
+        raise ValueError("Size in bits only available for non-negative numbers")
+    return N.bit_length()
 
 
 def getRandomInteger(N, randfunc=None):
@@ -113,27 +109,56 @@ def getRandomNBitInteger(N, randfunc=None):
     assert size(value) >= N
     return value
 
-def GCD(x,y):
-    """Greatest Common Denominator of :data:`x` and :data:`y`.
-    """
 
-    x = abs(x) ; y = abs(y)
-    while x > 0:
-        x, y = y % x, x
-    return y
+if sys.version_info[:2] >= (3, 5):
 
-def inverse(u, v):
-    """The inverse of :data:`u` *mod* :data:`v`."""
+    GCD = math.gcd
 
-    u3, v3 = u, v
-    u1, v1 = 1, 0
-    while v3 > 0:
-        q = u3 // v3
-        u1, v1 = v1, u1 - v1*q
-        u3, v3 = v3, u3 - v3*q
-    while u1<0:
-        u1 = u1 + v
-    return u1
+else:
+
+    def GCD(x,y):
+        """Greatest Common Denominator of :data:`x` and :data:`y`.
+        """
+
+        x = abs(x) ; y = abs(y)
+        while x > 0:
+            x, y = y % x, x
+        return y
+
+
+if sys.version_info[:2] >= (3, 8):
+
+    def inverse(u, v):
+        """The inverse of :data:`u` *mod* :data:`v`."""
+
+        if v == 0:
+            raise ZeroDivisionError("Modulus cannot be zero")
+        if v < 0:
+            raise ValueError("Modulus cannot be negative")
+
+        return pow(u, -1, v)
+
+else:
+
+    def inverse(u, v):
+        """The inverse of :data:`u` *mod* :data:`v`."""
+
+        if v == 0:
+            raise ZeroDivisionError("Modulus cannot be zero")
+        if v < 0:
+            raise ValueError("Modulus cannot be negative")
+
+        u3, v3 = u, v
+        u1, v1 = 1, 0
+        while v3 > 0:
+            q = u3 // v3
+            u1, v1 = v1, u1 - v1*q
+            u3, v3 = v3, u3 - v3*q
+        if u3 != 1:
+            raise ValueError("No inverse value can be computed")
+        while u1<0:
+            u1 = u1 + v
+        return u1
 
 # Given a number of bits to generate and a random generation function,
 # find a prime number of the appropriate size.
@@ -259,7 +284,7 @@ def getStrongPrime(N, e=0, false_positive_prob=1e-6, randfunc=None):
     # calculate range for X
     #   lower_bound = sqrt(2) * 2^{511 + 128*x}
     #   upper_bound = 2^{512 + 128*x} - 1
-    x = (N - 512) >> 7;
+    x = (N - 512) >> 7
     # We need to approximate the sqrt(2) in the lower_bound by an integer
     # expression because floating point math overflows with these numbers
     lower_bound = (14142135623730950489 * (2 ** (511 + 128*x))) //  10000000000000000000
@@ -366,12 +391,12 @@ def isPrime(N, false_positive_prob=1e-6, randfunc=None):
         return N == 2
     for p in sieve_base:
         if N == p:
-            return 1
+            return True
         if N % p == 0:
-            return 0
+            return False
 
     rounds = int(math.ceil(-math.log(false_positive_prob)/math.log(4)))
-    return _rabinMillerTest(N, rounds, randfunc)
+    return bool(_rabinMillerTest(N, rounds, randfunc))
 
 
 # Improved conversion functions contributed by Barry Warsaw, after

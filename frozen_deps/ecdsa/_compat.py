@@ -91,28 +91,13 @@ if sys.version_info < (3, 0):  # pragma: no branch
         raise ValueError("Only 'big' or 'little' endian supported")
 
 else:
-    if sys.version_info < (3, 4):  # pragma: no branch
-        # on python 3.3 hmac.hmac.update() accepts only bytes, on newer
-        # versions it does accept memoryview() also
-        def hmac_compat(data):
-            if not isinstance(data, bytes):  # pragma: no branch
-                return bytes(data)
-            return data
 
-        def normalise_bytes(buffer_object):
-            """Cast the input into array of bytes."""
-            if not buffer_object:
-                return b""
-            return memoryview(buffer_object).cast("B")
+    def hmac_compat(data):
+        return data
 
-    else:
-
-        def hmac_compat(data):
-            return data
-
-        def normalise_bytes(buffer_object):
-            """Cast the input into array of bytes."""
-            return memoryview(buffer_object).cast("B")
+    def normalise_bytes(buffer_object):
+        """Cast the input into array of bytes."""
+        return memoryview(buffer_object).cast("B")
 
     def compat26_str(val):
         return val
@@ -142,7 +127,7 @@ else:
         if length is None:
             length = byte_length(val)
         # for gmpy we need to convert back to native int
-        if type(val) != int:
+        if not isinstance(val, int):
             val = int(val)
         return bytearray(val.to_bytes(length=length, byteorder=byteorder))
 

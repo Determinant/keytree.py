@@ -1,6 +1,6 @@
-from typing import Union, overload
+from typing import Union, overload, Optional
 
-Buffer = Union[bytes, bytearray, memoryview]
+Buffer = bytes|bytearray|memoryview
 
 def _HChaCha20(key: Buffer, nonce: Buffer) -> bytearray: ...
 
@@ -19,7 +19,7 @@ class ChaCha20Cipher:
     def decrypt(self, plaintext: Buffer, output: Union[bytearray, memoryview]) -> None: ...
     def seek(self, position: int) -> None: ...
 
-def new(key: Buffer, nonce: Buffer = ...) -> ChaCha20Cipher: ...
+def new(key: Buffer, nonce: Optional[Buffer] = ...) -> ChaCha20Cipher: ...
 
 block_size: int
 key_size: int

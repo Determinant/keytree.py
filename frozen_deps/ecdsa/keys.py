@@ -5,9 +5,9 @@ Primary classes for performing signing and verification operations.
 import binascii
 from hashlib import sha1
 import os
-from six import PY2, b
+from six import PY2
 from . import ecdsa, eddsa
-from . import der
+from . import der, ssh
 from . import rfc6979
 from . import ellipticcurve
 from .curves import NIST192p, Curve, Ed25519, Ed448
@@ -614,6 +614,18 @@ class VerifyingKey(object):
             der.encode_bitstring(point_str, 0),
         )
 
+    def to_ssh(self):
+        """
+        Convert the public key to the SSH format.
+
+        :return: SSH encoding of the public key
+        :rtype: bytes
+        """
+        return ssh.serialize_public(
+            self.curve.name,
+            self.to_string(),
+        )
+
     def verify(
         self,
         signature,
@@ -1032,7 +1044,7 @@ class SigningKey(object):
         curve = None
 
         s, empty = der.remove_sequence(s)
-        if empty != b(""):
+        if empty != b"":
             raise der.UnexpectedDER(
                 "trailing junk after DER privkey: %s" % binascii.hexlify(empty)
             )
@@ -1090,12 +1102,6 @@ class SigningKey(object):
 
             curve = Curve.from_der(algorithm_identifier, valid_curve_encodings)
 
-            if empty != b"":
-                raise der.UnexpectedDER(
-                    "unexpected data after algorithm identifier: %s"
-                    % binascii.hexlify(empty)
-                )
-
             # Up next is an octet string containing an ECPrivateKey. Ignore
             # the optional "attributes" and "publicKey" fields that come after.
             s, _ = der.remove_octet_string(s)
@@ -1103,7 +1109,7 @@ class SigningKey(object):
             # Unpack the ECPrivateKey to get to the key data octet string,
             # and rejoin the ssleay parsing path.
             s, empty = der.remove_sequence(s)
-            if empty != b(""):
+            if empty != b"":
                 raise der.UnexpectedDER(
                     "trailing junk after DER privkey: %s"
                     % binascii.hexlify(empty)
@@ -1143,7 +1149,7 @@ class SigningKey(object):
         # our from_string method likes fixed-length privkey strings
         if len(privkey_str) < curve.baselen:
             privkey_str = (
-                b("\x00") * (curve.baselen - len(privkey_str)) + privkey_str
+                b"\x00" * (curve.baselen - len(privkey_str)) + privkey_str
             )
         return cls.from_string(privkey_str, curve, hashfunc)
 
@@ -1280,6 +1286,19 @@ class SigningKey(object):
                 ),
                 der.encode_octet_string(ec_private_key),
             )
+
+    def to_ssh(self):
+        """
+        Convert the private key to the SSH format.
+
+        :return: SSH encoded private key
+        :rtype: bytes
+        """
+        return ssh.serialize_private(
+            self.curve.name,
+            self.verifying_key.to_string(),
+            self.to_string(),
+        )
 
     def get_verifying_key(self):
         """

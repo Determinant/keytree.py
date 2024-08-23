@@ -1,4 +1,6 @@
-from typing import Union, Dict, Tuple
+from typing import Union, Dict, Tuple, Optional
+
+Buffer = bytes|bytearray|memoryview
 
 from Cryptodome.Cipher._mode_ecb import EcbMode
 from Cryptodome.Cipher._mode_cbc import CbcMode
@@ -20,13 +22,11 @@ MODE_CTR: DES3Mode
 MODE_OPENPGP: DES3Mode
 MODE_EAX: DES3Mode
 
-Buffer = Union[bytes, bytearray, memoryview]
-
 def new(key: Buffer,
         mode: DES3Mode,
-        iv : Buffer = ...,
-        IV : Buffer = ...,
-        nonce : Buffer = ...,
+        iv : Optional[Buffer] = ...,
+        IV : Optional[Buffer] = ...,
+        nonce : Optional[Buffer] = ...,
         segment_size : int = ...,
         mac_len : int = ...,
         initial_value : Union[int, Buffer] = ...,

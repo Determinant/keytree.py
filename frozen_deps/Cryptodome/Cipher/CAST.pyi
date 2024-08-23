@@ -1,4 +1,6 @@
-from typing import Union, Dict, Iterable
+from typing import Union, Dict, Iterable, Optional
+
+Buffer = bytes|bytearray|memoryview
 
 from Cryptodome.Cipher._mode_ecb import EcbMode
 from Cryptodome.Cipher._mode_cbc import CbcMode
@@ -18,13 +20,11 @@ MODE_CTR: CASTMode
 MODE_OPENPGP: CASTMode
 MODE_EAX: CASTMode
 
-Buffer = Union[bytes, bytearray, memoryview]
-
 def new(key: Buffer,
         mode: CASTMode,
-        iv : Buffer = ...,
-        IV : Buffer = ...,
-        nonce : Buffer = ...,
+        iv : Optional[Buffer] = ...,
+        IV : Optional[Buffer] = ...,
+        nonce : Optional[Buffer] = ...,
         segment_size : int = ...,
         mac_len : int = ...,
         initial_value : Union[int, Buffer] = ...,

@@ -1,6 +1,6 @@
 from typing import Any, Union, Iterable
 
-Buffer = Union[bytes, bytearray, memoryview]
+Buffer = bytes|bytearray|memoryview
 
 class ARC4Cipher:
     block_size: int

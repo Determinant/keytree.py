@@ -101,7 +101,7 @@ int ed25519_neg(Point *p);
 int ed25519_get_xy(uint8_t *xb, uint8_t *yb, size_t modsize, Point *p);
 int ed25519_double(Point *p);
 int ed25519_add(Point *P1, const Point *P2);
-int ed25519_scalar(Point *P, uint8_t *scalar, size_t scalar_len, uint64_t seed);
+int ed25519_scalar(Point *P, const uint8_t *scalar, size_t scalar_len, uint64_t seed);
 """)
 
 _ed448_lib = load_pycryptodome_raw_lib("Cryptodome.PublicKey._ed448", """
@@ -534,6 +534,9 @@ class EccPoint(object):
         return self
 
     def __eq__(self, point):
+        if not isinstance(point, EccPoint):
+            return False
+
         cmp_func = lib_func(self, "cmp")
         return 0 == cmp_func(self._point.get(), point._point.get())
 
@@ -753,7 +756,7 @@ class EccKey(object):
         if curve_name not in _curves:
             raise ValueError("Unsupported curve (%s)" % curve_name)
         self._curve = _curves[curve_name]
-        self.curve = curve_name
+        self.curve = self._curve.desc
 
         count = int(self._d is not None) + int(self._seed is not None)
 
@@ -801,6 +804,9 @@ class EccKey(object):
         return self._curve.desc in ("Ed25519", "Ed448")
 
     def __eq__(self, other):
+        if not isinstance(other, EccKey):
+            return False
+
         if other.has_private() != self.has_private():
             return False
 
@@ -809,7 +815,7 @@ class EccKey(object):
     def __repr__(self):
         if self.has_private():
             if self._is_eddsa():
-                extra = ", seed=%s" % self._seed.hex()
+                extra = ", seed=%s" % tostr(binascii.hexlify(self._seed))
             else:
                 extra = ", d=%d" % int(self._d)
         else:
@@ -957,7 +963,7 @@ class EccKey(object):
         from Cryptodome.IO import PKCS8
 
         if kwargs.get('passphrase', None) is not None and 'protection' not in kwargs:
-            raise ValueError("At least the 'protection' parameter should be present")
+            raise ValueError("At least the 'protection' parameter must be present")
 
         if self._is_eddsa():
             oid = self._curve.oid
@@ -1035,7 +1041,7 @@ class EccKey(object):
 
         Args:
           format (string):
-            The format to use for encoding the key:
+            The output format:
 
             - ``'DER'``. The key will be encoded in ASN.1 DER format (binary).
               For a public key, the ASN.1 ``subjectPublicKeyInfo`` structure
@@ -1056,20 +1062,25 @@ class EccKey(object):
               * For NIST P-curves: equivalent to ``'SEC1'``.
               * For EdDSA curves: ``bytes`` in the format defined in `RFC8032`_.
 
-          passphrase (byte string or string):
-            The passphrase to use for protecting the private key.
+          passphrase (bytes or string):
+            (*Private keys only*) The passphrase to protect the
+            private key.
 
           use_pkcs8 (boolean):
-            Only relevant for private keys.
-
+            (*Private keys only*)
             If ``True`` (default and recommended), the `PKCS#8`_ representation
             will be used. It must be ``True`` for EdDSA curves.
+
+            If ``False`` and a passphrase is present, the obsolete PEM
+            encryption will be used.
 
           protection (string):
             When a private key is exported with password-protection
             and PKCS#8 (both ``DER`` and ``PEM`` formats), this parameter MUST be
-            present and be a valid algorithm supported by :mod:`Cryptodome.IO.PKCS8`.
-            It is recommended to use ``PBKDF2WithHMAC-SHA1AndAES128-CBC``.
+            present,
+            For all possible protection schemes,
+            refer to :ref:`the encryption parameters of PKCS#8<enc_params>`.
+            It is recommended to use ``'PBKDF2WithHMAC-SHA5126AndAES128-CBC'``.
 
           compress (boolean):
             If ``True``, the method returns a more compact representation
@@ -1079,6 +1090,16 @@ class EccKey(object):
 
             This parameter is ignored for EdDSA curves, as compression is
             mandatory.
+
+          prot_params (dict):
+            When a private key is exported with password-protection
+            and PKCS#8 (both ``DER`` and ``PEM`` formats), this dictionary
+            contains the  parameters to use to derive the encryption key
+            from the passphrase.
+            For all possible values,
+            refer to :ref:`the encryption parameters of PKCS#8<enc_params>`.
+            The recommendation is to use ``{'iteration_count':21000}`` for PBKDF2,
+            and ``{'iteration_count':131072}`` for scrypt.
 
         .. warning::
             If you don't provide a passphrase, the private key will be
@@ -1115,8 +1136,11 @@ class EccKey(object):
                     raise ValueError("Empty passphrase")
             use_pkcs8 = args.pop("use_pkcs8", True)
 
-            if not use_pkcs8 and self._is_eddsa():
-                raise ValueError("'pkcs8' must be True for EdDSA curves")
+            if not use_pkcs8:
+                if self._is_eddsa():
+                    raise ValueError("'pkcs8' must be True for EdDSA curves")
+                if 'protection' in args:
+                    raise ValueError("'protection' is only supported for PKCS#8")
 
             if ext_format == "PEM":
                 if use_pkcs8:
@@ -1390,8 +1414,8 @@ def _import_rfc5915_der(encoded, passphrase, curve_oid=None):
     d = Integer.from_bytes(scalar_bytes)
 
     # Decode public key (if any)
-    if len(private_key) == 4:
-        public_key_enc = DerBitString(explicit=1).decode(private_key[3]).value
+    if len(private_key) > 2:
+        public_key_enc = DerBitString(explicit=1).decode(private_key[-1]).value
         public_key = _import_public_der(public_key_enc, curve_oid=curve_oid)
         point_x = public_key.pointQ.x
         point_y = public_key.pointQ.y
@@ -1766,7 +1790,7 @@ def import_key(encoded, passphrase=None, curve_name=None):
         return _import_der(encoded, passphrase)
 
     # SEC1
-    if len(encoded) > 0 and bord(encoded[0]) in b'\x02\x03\x04':
+    if len(encoded) > 0 and bord(encoded[0]) in (0x02, 0x03, 0x04):
         if curve_name is None:
             raise ValueError("No curve name was provided")
         return _import_public_der(encoded, curve_name=curve_name)

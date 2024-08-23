@@ -8,7 +8,7 @@ try:
     from gmpy2 import mpz
 
     GMPY = True
-except ImportError:
+except ImportError:  # pragma: no cover
     try:
         from gmpy import mpz
 
@@ -43,7 +43,7 @@ class TestBytesToInt(unittest.TestCase):
             int_to_bytes(0, byteorder="middle")
 
 
-@pytest.mark.skipif(GMPY == False, reason="requites gmpy or gmpy2")
+@pytest.mark.skipif(GMPY == False, reason="requires gmpy or gmpy2")
 def test_int_to_bytes_with_gmpy():
     assert int_to_bytes(mpz(1)) == b"\x01"
 

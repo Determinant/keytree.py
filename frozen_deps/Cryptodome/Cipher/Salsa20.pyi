@@ -1,7 +1,6 @@
-from typing import Union, Tuple, Optional, overload
+from typing import Union, Tuple, Optional, overload, Optional
 
-
-Buffer = Union[bytes, bytearray, memoryview]
+Buffer = bytes|bytearray|memoryview
 
 class Salsa20Cipher:
     nonce: bytes

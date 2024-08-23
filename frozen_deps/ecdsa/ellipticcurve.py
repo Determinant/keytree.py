@@ -136,11 +136,17 @@ class CurveFp(object):
         return (y * y - ((x * x + self.__a) * x + self.__b)) % self.__p == 0
 
     def __str__(self):
-        return "CurveFp(p=%d, a=%d, b=%d, h=%d)" % (
+        if self.__h is not None:
+            return "CurveFp(p={0}, a={1}, b={2}, h={3})".format(
+                self.__p,
+                self.__a,
+                self.__b,
+                self.__h,
+            )
+        return "CurveFp(p={0}, a={1}, b={2})".format(
             self.__p,
             self.__a,
             self.__b,
-            self.__h,
         )
 
 
@@ -219,11 +225,17 @@ class CurveEdTw(object):
         return self.__h
 
     def __str__(self):
-        return "CurveEdTw(p={0}, a={1}, d={2}, h={3})".format(
+        if self.__h is not None:
+            return "CurveEdTw(p={0}, a={1}, d={2}, h={3})".format(
+                self.__p,
+                self.__a,
+                self.__d,
+                self.__h,
+            )
+        return "CurveEdTw(p={0}, a={1}, d={2})".format(
             self.__p,
             self.__a,
             self.__d,
-            self.__h,
         )
 
 
@@ -1008,8 +1020,8 @@ class PointJacobi(AbstractPoint):
         # so we need 4 combined points:
         mAmB_X, mAmB_Y, mAmB_Z = _add(X1, -Y1, Z1, X2, -Y2, Z2, p)
         pAmB_X, pAmB_Y, pAmB_Z = _add(X1, Y1, Z1, X2, -Y2, Z2, p)
-        mApB_X, mApB_Y, mApB_Z = _add(X1, -Y1, Z1, X2, Y2, Z2, p)
-        pApB_X, pApB_Y, pApB_Z = _add(X1, Y1, Z1, X2, Y2, Z2, p)
+        mApB_X, mApB_Y, mApB_Z = pAmB_X, -pAmB_Y, pAmB_Z
+        pApB_X, pApB_Y, pApB_Z = mAmB_X, -mAmB_Y, mAmB_Z
         # when the self and other sum to infinity, we need to add them
         # one by one to get correct result but as that's very unlikely to
         # happen in regular operation, we don't need to optimise this case
@@ -1520,7 +1532,9 @@ class PointEdwards(AbstractPoint):
 
         X3, Y3, Z3, T3 = self._double(X1, Y1, Z1, T1, p, a)
 
-        if not X3 or not T3:
+        # both Ed25519 and Ed448 have prime order, so no point added to
+        # itself will equal zero
+        if not X3 or not T3:  # pragma: no branch
             return INFINITY
         return PointEdwards(self.__curve, X3, Y3, Z3, T3, self.__order)
 

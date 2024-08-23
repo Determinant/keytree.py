@@ -1,4 +1,6 @@
-from typing import Union, Dict, Iterable
+from typing import Union, Dict, Iterable, Optional
+
+Buffer = bytes|bytearray|memoryview
 
 from Cryptodome.Cipher._mode_ecb import EcbMode
 from Cryptodome.Cipher._mode_cbc import CbcMode
@@ -18,13 +20,11 @@ MODE_CTR: BlowfishMode
 MODE_OPENPGP: BlowfishMode
 MODE_EAX: BlowfishMode
 
-Buffer = Union[bytes, bytearray, memoryview]
-
 def new(key: Buffer,
         mode: BlowfishMode,
-        iv : Buffer = ...,
-        IV : Buffer = ...,
-        nonce : Buffer = ...,
+        iv : Optional[Buffer] = ...,
+        IV : Optional[Buffer] = ...,
+        nonce : Optional[Buffer] = ...,
         segment_size : int = ...,
         mac_len : int = ...,
         initial_value : Union[int, Buffer] = ...,

@@ -1,9 +1,0 @@
-README.rst
-bech32.py
-keytree.py
-setup.py
-keytree.py.egg-info/PKG-INFO
-keytree.py.egg-info/SOURCES.txt
-keytree.py.egg-info/dependency_links.txt
-keytree.py.egg-info/requires.txt
-keytree.py.egg-info/top_level.txt

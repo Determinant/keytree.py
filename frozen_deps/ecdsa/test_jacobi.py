@@ -1,4 +1,5 @@
 import pickle
+import sys
 
 try:
     import unittest2 as unittest
@@ -6,7 +7,6 @@ except ImportError:
     import unittest
 
 import os
-import sys
 import signal
 import pytest
 import threading
@@ -22,6 +22,7 @@ from .ecdsa import (
     generator_brainpoolp160r1,
     curve_brainpoolp160r1,
     generator_112r2,
+    curve_112r2,
 )
 from .numbertheory import inverse_mod
 from .util import randrange
@@ -30,6 +31,13 @@ from .util import randrange
 NO_OLD_SETTINGS = {}
 if sys.version_info > (2, 7):  # pragma: no branch
     NO_OLD_SETTINGS["deadline"] = 5000
+
+
+SLOW_SETTINGS = {}
+if "--fast" in sys.argv:  # pragma: no cover
+    SLOW_SETTINGS["max_examples"] = 2
+else:
+    SLOW_SETTINGS["max_examples"] = 10
 
 
 class TestJacobi(unittest.TestCase):
@@ -50,7 +58,7 @@ class TestJacobi(unittest.TestCase):
         p_a = PointJacobi.from_affine(generator_256)
         p_b = PointJacobi.from_affine(generator_224)
 
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValueError):  # pragma: no branch
             p_a + p_b
 
     def test_compare_different_curves(self):
@@ -199,10 +207,10 @@ class TestJacobi(unittest.TestCase):
 
         self.assertEqual(dbl, mlpl)
 
-    @settings(max_examples=10)
+    @settings(**SLOW_SETTINGS)
     @given(
         st.integers(
-            min_value=0, max_value=int(generator_brainpoolp160r1.order())
+            min_value=0, max_value=int(generator_brainpoolp160r1.order() - 1)
         )
     )
     def test_multiplications(self, mul):
@@ -214,10 +222,10 @@ class TestJacobi(unittest.TestCase):
         self.assertEqual((pj.x(), pj.y()), (pw.x(), pw.y()))
         self.assertEqual(pj, pw)
 
-    @settings(max_examples=10)
+    @settings(**SLOW_SETTINGS)
     @given(
         st.integers(
-            min_value=0, max_value=int(generator_brainpoolp160r1.order())
+            min_value=0, max_value=int(generator_brainpoolp160r1.order() - 1)
         )
     )
     @example(0)
@@ -232,13 +240,13 @@ class TestJacobi(unittest.TestCase):
 
         self.assertEqual(a, b)
 
-    @settings(max_examples=10)
+    @settings(**SLOW_SETTINGS)
     @given(
         st.integers(
-            min_value=1, max_value=int(generator_brainpoolp160r1.order())
+            min_value=1, max_value=int(generator_brainpoolp160r1.order() - 1)
         ),
         st.integers(
-            min_value=1, max_value=int(generator_brainpoolp160r1.order())
+            min_value=1, max_value=int(generator_brainpoolp160r1.order() - 1)
         ),
     )
     @example(3, 3)
@@ -251,13 +259,13 @@ class TestJacobi(unittest.TestCase):
 
         self.assertEqual(c, j_g * (a_mul + b_mul))
 
-    @settings(max_examples=10)
+    @settings(**SLOW_SETTINGS)
     @given(
         st.integers(
-            min_value=1, max_value=int(generator_brainpoolp160r1.order())
+            min_value=1, max_value=int(generator_brainpoolp160r1.order() - 1)
         ),
         st.integers(
-            min_value=1, max_value=int(generator_brainpoolp160r1.order())
+            min_value=1, max_value=int(generator_brainpoolp160r1.order() - 1)
         ),
         st.integers(min_value=1, max_value=int(curve_brainpoolp160r1.p() - 1)),
     )
@@ -283,13 +291,14 @@ class TestJacobi(unittest.TestCase):
 
         self.assertEqual(c, j_g * (a_mul + b_mul))
 
-    @settings(max_examples=10)
+    @pytest.mark.slow
+    @settings(**SLOW_SETTINGS)
     @given(
         st.integers(
-            min_value=1, max_value=int(generator_brainpoolp160r1.order())
+            min_value=1, max_value=int(generator_brainpoolp160r1.order() - 1)
         ),
         st.integers(
-            min_value=1, max_value=int(generator_brainpoolp160r1.order())
+            min_value=1, max_value=int(generator_brainpoolp160r1.order() - 1)
         ),
         st.integers(min_value=1, max_value=int(curve_brainpoolp160r1.p() - 1)),
     )
@@ -348,13 +357,14 @@ class TestJacobi(unittest.TestCase):
 
         self.assertEqual(c, x + y)
 
-    @settings(max_examples=14)
+    @pytest.mark.slow
+    @settings(**SLOW_SETTINGS)
     @given(
         st.integers(
-            min_value=1, max_value=int(generator_brainpoolp160r1.order())
+            min_value=1, max_value=int(generator_brainpoolp160r1.order() - 1)
         ),
         st.integers(
-            min_value=1, max_value=int(generator_brainpoolp160r1.order())
+            min_value=1, max_value=int(generator_brainpoolp160r1.order() - 1)
         ),
         st.lists(
             st.integers(
@@ -422,6 +432,78 @@ class TestJacobi(unittest.TestCase):
         c = a + a
 
         self.assertEqual(c, x + y)
+
+    def test_add_different_points_same_scale_static(self):
+        j_g = generator_brainpoolp160r1
+        p = curve_brainpoolp160r1.p()
+        a = j_g * 11
+        a.scale()
+        b = j_g * 12
+        z = 13
+        x = PointJacobi(
+            curve_brainpoolp160r1,
+            a.x() * z**2 % p,
+            a.y() * z**3 % p,
+            z,
+        )
+        y = PointJacobi(
+            curve_brainpoolp160r1,
+            b.x() * z**2 % p,
+            b.y() * z**3 % p,
+            z,
+        )
+
+        c = a + b
+
+        self.assertEqual(c, x + y)
+
+    def test_add_same_point_different_scale_second_z_1_static(self):
+        j_g = generator_112r2
+        p = curve_112r2.p()
+        z = 11
+        a = j_g * z
+        a.scale()
+
+        x = PointJacobi(
+            curve_112r2,
+            a.x() * z**2 % p,
+            a.y() * z**3 % p,
+            z,
+        )
+        y = PointJacobi(
+            curve_112r2,
+            a.x(),
+            a.y(),
+            1,
+        )
+
+        c = a + a
+
+        self.assertEqual(c, x + y)
+
+    def test_add_to_infinity_static(self):
+        j_g = generator_112r2
+
+        z = 11
+        a = j_g * z
+        a.scale()
+
+        b = -a
+
+        x = PointJacobi(
+            curve_112r2,
+            a.x(),
+            a.y(),
+            1,
+        )
+        y = PointJacobi(
+            curve_112r2,
+            b.x(),
+            b.y(),
+            1,
+        )
+
+        self.assertEqual(INFINITY, x + y)
 
     def test_add_point_3_times(self):
         j_g = PointJacobi.from_affine(generator_256)
@@ -553,13 +635,24 @@ class TestJacobi(unittest.TestCase):
 
         self.assertNotEqual(p_a, p_b)
 
+    def test_add_with_point_at_infinity(self):
+        pj1 = PointJacobi(curve=CurveFp(23, 1, 1, 1), x=2, y=3, z=1, order=1)
+        x, y, z = pj1._add(2, 3, 1, 5, 5, 0, 23)
+
+        self.assertEqual((x, y, z), (2, 3, 1))
+
     def test_pickle(self):
         pj = PointJacobi(curve=CurveFp(23, 1, 1, 1), x=2, y=3, z=1, order=1)
         self.assertEqual(pickle.loads(pickle.dumps(pj)), pj)
 
+    @pytest.mark.slow
     @settings(**NO_OLD_SETTINGS)
+    @pytest.mark.skipif(
+        platform.python_implementation() == "PyPy",
+        reason="threading on PyPy breaks coverage",
+    )
     @given(st.integers(min_value=1, max_value=10))
-    def test_multithreading(self, thread_num):
+    def test_multithreading(self, thread_num):  # pragma: no cover
         # ensure that generator's precomputation table is filled
         generator_112r2 * 2
 
@@ -591,11 +684,14 @@ class TestJacobi(unittest.TestCase):
             generator_112r2._PointJacobi__precompute,
         )
 
+    @pytest.mark.slow
     @pytest.mark.skipif(
-        platform.system() == "Windows",
-        reason="there are no signals on Windows",
+        platform.system() == "Windows"
+        or platform.python_implementation() == "PyPy",
+        reason="there are no signals on Windows, and threading breaks coverage"
+        " on PyPy",
     )
-    def test_multithreading_with_interrupts(self):
+    def test_multithreading_with_interrupts(self):  # pragma: no cover
         thread_num = 10
         # ensure that generator's precomputation table is filled
         generator_112r2 * 2

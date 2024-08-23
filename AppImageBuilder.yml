@@ -2,9 +2,12 @@ version: 1
 script:
   - rm -rf AppDir  | true
   - mkdir -p AppDir/usr/src
+  - cp mnemonic.py  AppDir/usr/src
   - cp bech32.py  AppDir/usr/src
+  - cp shamir.py  AppDir/usr/src
   - cp keytree.py  AppDir/usr/src
   - cp setup.py  AppDir/usr/src
+  - cp -r wordlist/  AppDir/usr/src
   - python3.10 -m pip install -t AppDir/usr/src/frozen_deps AppDir/usr/src
   - rm -rf AppDir/usr/src/frozen_deps/Cryptodome/SelfTest
 
@@ -39,7 +42,7 @@ AppDir:
       PYTHONHOME: '${APPDIR}/usr'
       # Path to the site-packages dir or other modules dirs
       # See https://docs.python.org/3/using/cmdline.html#envvar-PYTHONPATH
-      PYTHONPATH: '${APPDIR}/usr/lib/python3.8/site-packages'
+      PYTHONPATH: '${APPDIR}/usr/lib/python3.10/site-packages'
 
 AppImage:
   update-information: 'gh-releases-zsync|AppImageCrafters|keytree|latest|python-appimage-*x86_64.AppImage.zsync'

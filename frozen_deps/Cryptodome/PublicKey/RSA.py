@@ -38,6 +38,7 @@ import struct
 from Cryptodome import Random
 from Cryptodome.Util.py3compat import tobytes, bord, tostr
 from Cryptodome.Util.asn1 import DerSequence, DerNull
+from Cryptodome.Util.number import bytes_to_long
 
 from Cryptodome.Math.Numbers import Integer
 from Cryptodome.Math.Primality import (test_probable_prime,
@@ -49,7 +50,7 @@ from Cryptodome.PublicKey import (_expand_subject_public_key_info,
 
 
 class RsaKey(object):
-    r"""Class defining an actual RSA key.
+    r"""Class defining an RSA key, private or public.
     Do not instantiate directly.
     Use :func:`generate`, :func:`construct` or :func:`import_key` instead.
 
@@ -68,10 +69,14 @@ class RsaKey(object):
     :ivar q: Second factor of the RSA modulus
     :vartype q: integer
 
-    :ivar u: Chinese remainder component (:math:`p^{-1} \text{mod } q`)
-    :vartype u: integer
+    :ivar invp: Chinese remainder component (:math:`p^{-1} \text{mod } q`)
+    :vartype invp: integer
 
-    :undocumented: exportKey, publickey
+    :ivar invq: Chinese remainder component (:math:`q^{-1} \text{mod } p`)
+    :vartype invq: integer
+
+    :ivar u: Same as ``invp``
+    :vartype u: integer
     """
 
     def __init__(self, **kwargs):
@@ -103,6 +108,7 @@ class RsaKey(object):
         if input_set == private_set:
             self._dp = self._d % (self._p - 1)  # = (e⁻¹) mod (p-1)
             self._dq = self._d % (self._q - 1)  # = (e⁻¹) mod (q-1)
+            self._invq = None                   # will be computed on demand
 
     @property
     def n(self):
@@ -131,6 +137,30 @@ class RsaKey(object):
         return int(self._q)
 
     @property
+    def dp(self):
+        if not self.has_private():
+            raise AttributeError("No CRT component 'dp' available for public keys")
+        return int(self._dp)
+
+    @property
+    def dq(self):
+        if not self.has_private():
+            raise AttributeError("No CRT component 'dq' available for public keys")
+        return int(self._dq)
+
+    @property
+    def invq(self):
+        if not self.has_private():
+            raise AttributeError("No CRT component 'invq' available for public keys")
+        if self._invq is None:
+            self._invq = self._q.inverse(self._p)
+        return int(self._invq)
+
+    @property
+    def invp(self):
+        return self.u
+
+    @property
     def u(self):
         if not self.has_private():
             raise AttributeError("No CRT component 'u' available for public keys")
@@ -149,7 +179,7 @@ class RsaKey(object):
             raise ValueError("Plaintext too large")
         return int(pow(Integer(plaintext), self._e, self._n))
 
-    def _decrypt(self, ciphertext):
+    def _decrypt_to_bytes(self, ciphertext):
         if not 0 <= ciphertext < self._n:
             raise ValueError("Ciphertext too large")
         if not self.has_private():
@@ -167,11 +197,17 @@ class RsaKey(object):
         h = ((m2 - m1) * self._u) % self._q
         mp = h * self._p + m1
         # Step 4: Compute m = m' * (r**(-1)) mod n
-        result = (r.inverse(self._n) * mp) % self._n
-        # Verify no faults occurred
-        if ciphertext != pow(result, self._e, self._n):
-            raise ValueError("Fault detected in RSA decryption")
+        # then encode into a big endian byte string
+        result = Integer._mult_modulo_bytes(
+                    r.inverse(self._n),
+                    mp,
+                    self._n)
         return result
+
+    def _decrypt(self, ciphertext):
+        """Legacy private method"""
+
+        return bytes_to_long(self._decrypt_to_bytes(ciphertext))
 
     def has_private(self):
         """Whether this is an RSA private key"""
@@ -225,67 +261,76 @@ class RsaKey(object):
         return "%s RSA key at 0x%X" % (key_type, id(self))
 
     def export_key(self, format='PEM', passphrase=None, pkcs=1,
-                   protection=None, randfunc=None):
+                   protection=None, randfunc=None, prot_params=None):
         """Export this RSA key.
 
-        Args:
+        Keyword Args:
           format (string):
-            The format to use for wrapping the key:
+            The desired output format:
 
-            - *'PEM'*. (*Default*) Text encoding, done according to `RFC1421`_/`RFC1423`_.
-            - *'DER'*. Binary encoding.
-            - *'OpenSSH'*. Textual encoding, done according to OpenSSH specification.
+            - ``'PEM'``. (default) Text output, according to `RFC1421`_/`RFC1423`_.
+            - ``'DER'``. Binary output.
+            - ``'OpenSSH'``. Text output, according to the OpenSSH specification.
               Only suitable for public keys (not private keys).
 
-          passphrase (string):
-            (*For private keys only*) The pass phrase used for protecting the output.
+            Note that PEM contains a DER structure.
+
+          passphrase (bytes or string):
+            (*Private keys only*) The passphrase to protect the
+            private key.
 
           pkcs (integer):
-            (*For private keys only*) The ASN.1 structure to use for
-            serializing the key. Note that even in case of PEM
-            encoding, there is an inner ASN.1 DER structure.
+            (*Private keys only*) The standard to use for
+            serializing the key: PKCS#1 or PKCS#8.
 
-            With ``pkcs=1`` (*default*), the private key is encoded in a
-            simple `PKCS#1`_ structure (``RSAPrivateKey``).
+            With ``pkcs=1`` (*default*), the private key is encoded with a
+            simple `PKCS#1`_ structure (``RSAPrivateKey``). The key cannot be
+            securely encrypted.
 
-            With ``pkcs=8``, the private key is encoded in a `PKCS#8`_ structure
-            (``PrivateKeyInfo``).
+            With ``pkcs=8``, the private key is encoded with a `PKCS#8`_ structure
+            (``PrivateKeyInfo``). PKCS#8 offers the best ways to securely
+            encrypt the key.
 
             .. note::
                 This parameter is ignored for a public key.
-                For DER and PEM, an ASN.1 DER ``SubjectPublicKeyInfo``
-                structure is always used.
+                For DER and PEM, the output is always an
+                ASN.1 DER ``SubjectPublicKeyInfo`` structure.
 
           protection (string):
             (*For private keys only*)
-            The encryption scheme to use for protecting the private key.
+            The encryption scheme to use for protecting the private key
+            using the passphrase.
+
+            You can only specify a value if ``pkcs=8``.
+            For all possible protection schemes,
+            refer to :ref:`the encryption parameters of PKCS#8<enc_params>`.
+            The recommended value is
+            ``'PBKDF2WithHMAC-SHA512AndAES256-CBC'``.
 
             If ``None`` (default), the behavior depends on :attr:`format`:
 
-            - For *'DER'*, the *PBKDF2WithHMAC-SHA1AndDES-EDE3-CBC*
-              scheme is used. The following operations are performed:
+            - if ``format='PEM'``, the obsolete PEM encryption scheme is used.
+              It is based on MD5 for key derivation, and 3DES for encryption.
 
-                1. A 16 byte Triple DES key is derived from the passphrase
-                   using :func:`Cryptodome.Protocol.KDF.PBKDF2` with 8 bytes salt,
-                   and 1 000 iterations of :mod:`Cryptodome.Hash.HMAC`.
-                2. The private key is encrypted using CBC.
-                3. The encrypted key is encoded according to PKCS#8.
+            - if ``format='DER'``, the ``'PBKDF2WithHMAC-SHA1AndDES-EDE3-CBC'``
+              scheme is used.
 
-            - For *'PEM'*, the obsolete PEM encryption scheme is used.
-              It is based on MD5 for key derivation, and Triple DES for encryption.
+          prot_params (dict):
+            (*For private keys only*)
 
-            Specifying a value for :attr:`protection` is only meaningful for PKCS#8
-            (that is, ``pkcs=8``) and only if a pass phrase is present too.
-
-            The supported schemes for PKCS#8 are listed in the
-            :mod:`Cryptodome.IO.PKCS8` module (see :attr:`wrap_algo` parameter).
+            The parameters to use to derive the encryption key
+            from the passphrase. ``'protection'`` must be also specified.
+            For all possible values,
+            refer to :ref:`the encryption parameters of PKCS#8<enc_params>`.
+            The recommendation is to use ``{'iteration_count':21000}`` for PBKDF2,
+            and ``{'iteration_count':131072}`` for scrypt.
 
           randfunc (callable):
             A function that provides random bytes. Only used for PEM encoding.
             The default is :func:`Cryptodome.Random.get_random_bytes`.
 
         Returns:
-          byte string: the encoded key
+          bytes: the encoded key
 
         Raises:
           ValueError:when the format is unknown or when you try to encrypt a private
@@ -344,9 +389,12 @@ class RsaKey(object):
                 else:
                     key_type = 'ENCRYPTED PRIVATE KEY'
                     if not protection:
+                        if prot_params:
+                            raise ValueError("'protection' parameter must be set")
                         protection = 'PBKDF2WithHMAC-SHA1AndDES-EDE3-CBC'
                     binary_key = PKCS8.wrap(binary_key, oid,
                                             passphrase, protection,
+                                            prot_params=prot_params,
                                             key_params=DerNull())
                     passphrase = None
         else:
@@ -368,29 +416,41 @@ class RsaKey(object):
         raise ValueError("Unknown key format '%s'. Cannot export the RSA key." % format)
 
     # Backward compatibility
-    exportKey = export_key
-    publickey = public_key
+    def exportKey(self, *args, **kwargs):
+        """:meta private:"""
+        return self.export_key(*args, **kwargs)
+
+    def publickey(self):
+        """:meta private:"""
+        return self.public_key()
 
     # Methods defined in PyCryptodome that we don't support anymore
     def sign(self, M, K):
+        """:meta private:"""
         raise NotImplementedError("Use module Cryptodome.Signature.pkcs1_15 instead")
 
     def verify(self, M, signature):
+        """:meta private:"""
         raise NotImplementedError("Use module Cryptodome.Signature.pkcs1_15 instead")
 
     def encrypt(self, plaintext, K):
+        """:meta private:"""
         raise NotImplementedError("Use module Cryptodome.Cipher.PKCS1_OAEP instead")
 
     def decrypt(self, ciphertext):
+        """:meta private:"""
         raise NotImplementedError("Use module Cryptodome.Cipher.PKCS1_OAEP instead")
 
     def blind(self, M, B):
+        """:meta private:"""
         raise NotImplementedError
 
     def unblind(self, M, B):
+        """:meta private:"""
         raise NotImplementedError
 
     def size(self):
+        """:meta private:"""
         raise NotImplementedError
 
 
@@ -408,6 +468,7 @@ def generate(bits, randfunc=None, e=65537):
         Key length, or size (in bits) of the RSA modulus.
         It must be at least 1024, but **2048 is recommended.**
         The FIPS standard only defines 1024, 2048 and 3072.
+    Keyword Args:
       randfunc (callable):
         Function that returns random bytes.
         The default is :func:`Cryptodome.Random.get_random_bytes`.
@@ -505,6 +566,7 @@ def construct(rsa_components, consistency_check=True):
             5. Second factor of *n* (*q*). Optional.
             6. CRT coefficient *q*, that is :math:`p^{-1} \text{mod }q`. Optional.
 
+    Keyword Args:
         consistency_check (boolean):
             If ``True``, the library will verify that the provided components
             fulfil the main RSA properties.

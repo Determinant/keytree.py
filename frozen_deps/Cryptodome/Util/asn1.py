@@ -22,13 +22,20 @@
 
 import struct
 
-from Cryptodome.Util.py3compat import byte_string, b, bchr, bord
+from Cryptodome.Util.py3compat import byte_string, bchr, bord
 
 from Cryptodome.Util.number import long_to_bytes, bytes_to_long
 
-__all__ = ['DerObject', 'DerInteger', 'DerOctetString', 'DerNull',
-           'DerSequence', 'DerObjectId', 'DerBitString', 'DerSetOf']
+__all__ = ['DerObject', 'DerInteger', 'DerBoolean', 'DerOctetString',
+           'DerNull', 'DerSequence', 'DerObjectId', 'DerBitString', 'DerSetOf']
 
+# Useful references:
+# - https://luca.ntop.org/Teaching/Appunti/asn1.html
+# - https://letsencrypt.org/docs/a-warm-welcome-to-asn1-and-der/
+# - https://www.zytrax.com/tech/survival/asn1.html
+# - https://www.oss.com/asn1/resources/books-whitepapers-pubs/larmouth-asn1-book.pdf
+# - https://www.itu.int/ITU-T/studygroups/com17/languages/X.690-0207.pdf
+# - https://misc.daniel-marschall.de/asn.1/oid-converter/online.php
 
 def _is_number(x, only_non_negative=False):
     test = 0
@@ -46,7 +53,7 @@ class BytesIO_EOF(object):
     def __init__(self, initial_bytes):
         self._buffer = initial_bytes
         self._index = 0
-        self._bookmark  = None
+        self._bookmark = None
 
     def set_bookmark(self):
         self._bookmark = self._index
@@ -82,7 +89,7 @@ class DerObject(object):
                 """Initialize the DER object according to a specific ASN.1 type.
 
                 :Parameters:
-                  asn1Id : integer
+                  asn1Id : integer or byte
                     The universal DER tag number for this object
                     (e.g. 0x10 for a SEQUENCE).
                     If None, the tag is not known yet.
@@ -92,16 +99,20 @@ class DerObject(object):
                     the content octets).
                     If not specified, the payload is empty.
 
-                  implicit : integer
-                    The IMPLICIT tag number to use for the encoded object.
+                  implicit : integer or byte
+                    The IMPLICIT tag number (< 0x1F) to use for the encoded object.
                     It overrides the universal tag *asn1Id*.
+                    It cannot be combined with the ``explicit`` parameter.
+                    By default, there is no IMPLICIT tag.
 
                   constructed : bool
                     True when the ASN.1 type is *constructed*.
-                    False when it is *primitive*.
+                    False when it is *primitive* (default).
 
-                  explicit : integer
-                    The EXPLICIT tag number to use for the encoded object.
+                  explicit : integer or byte
+                    The EXPLICIT tag number (< 0x1F) to use for the encoded object.
+                    It cannot be combined with the ``implicit`` parameter.
+                    By default, there is no EXPLICIT tag.
                 """
 
                 if asn1Id is None:
@@ -125,23 +136,26 @@ class DerObject(object):
                 # context-spec |   1      0 (default for IMPLICIT/EXPLICIT)
                 # private      |   1      1
                 #
+
+                constructed_bit = 0x20 if constructed else 0x00
+
                 if None not in (explicit, implicit):
                     raise ValueError("Explicit and implicit tags are"
                                      " mutually exclusive")
 
                 if implicit is not None:
-                    self._tag_octet = 0x80 | 0x20 * constructed | self._convertTag(implicit)
-                    return
-
-                if explicit is not None:
-                    self._tag_octet = 0xA0 | self._convertTag(explicit)
-                    self._inner_tag_octet = 0x20 * constructed | asn1Id
-                    return
-
-                self._tag_octet = 0x20 * constructed | asn1Id
+                    # IMPLICIT tag overrides asn1Id
+                    self._tag_octet = 0x80 | constructed_bit | self._convertTag(implicit)
+                elif explicit is not None:
+                    # 'constructed bit' is always asserted for an EXPLICIT tag
+                    self._tag_octet = 0x80 | 0x20 | self._convertTag(explicit)
+                    self._inner_tag_octet = constructed_bit | asn1Id
+                else:
+                    # Neither IMPLICIT nor EXPLICIT
+                    self._tag_octet = constructed_bit | asn1Id
 
         def _convertTag(self, tag):
-                """Check if *tag* is a real DER tag.
+                """Check if *tag* is a real DER tag (5 bits).
                 Convert it from a character to number if necessary.
                 """
                 if not _is_number(tag):
@@ -306,7 +320,7 @@ class DerInteger(DerObject):
                 return DerObject.encode(self)
 
         def decode(self, der_encoded, strict=False):
-                """Decode a complete DER INTEGER DER, and re-initializes this
+                """Decode a DER-encoded INTEGER, and re-initializes this
                 object with it.
 
                 Args:
@@ -339,6 +353,89 @@ class DerInteger(DerObject):
                     bits <<= 8
                 if self.payload and bord(self.payload[0]) & 0x80:
                     self.value -= bits
+
+
+class DerBoolean(DerObject):
+    """Class to model a DER-encoded BOOLEAN.
+
+    An example of encoding is::
+
+    >>> from Cryptodome.Util.asn1 import DerBoolean
+    >>> bool_der = DerBoolean(True)
+    >>> print(bool_der.encode().hex())
+
+    which will show ``0101ff``, the DER encoding of True.
+
+    And for decoding::
+
+    >>> s = bytes.fromhex('0101ff')
+    >>> try:
+    >>>   bool_der = DerBoolean()
+    >>>   bool_der.decode(s)
+    >>>   print(bool_der.value)
+    >>> except ValueError:
+    >>>   print "Not a valid DER BOOLEAN"
+
+    the output will be ``True``.
+
+    :ivar value: The boolean value
+    :vartype value: boolean
+    """
+    def __init__(self, value=False, implicit=None, explicit=None):
+        """Initialize the DER object as a BOOLEAN.
+
+        Args:
+          value (boolean):
+            The value of the boolean. Default is False.
+
+          implicit (integer or byte):
+            The IMPLICIT tag number (< 0x1F) to use for the encoded object.
+            It overrides the universal tag for BOOLEAN (1).
+            It cannot be combined with the ``explicit`` parameter.
+            By default, there is no IMPLICIT tag.
+
+          explicit (integer or byte):
+            The EXPLICIT tag number (< 0x1F) to use for the encoded object.
+            It cannot be combined with the ``implicit`` parameter.
+            By default, there is no EXPLICIT tag.
+        """
+
+        DerObject.__init__(self, 0x01, b'', implicit, False, explicit)
+        self.value = value  # The boolean value
+
+    def encode(self):
+        """Return the DER BOOLEAN, fully encoded as a binary string."""
+
+        self.payload = b'\xFF' if self.value else b'\x00'
+        return DerObject.encode(self)
+
+    def decode(self, der_encoded, strict=False):
+        """Decode a DER-encoded BOOLEAN, and re-initializes this object with it.
+
+        Args:
+            der_encoded (byte string): A DER-encoded BOOLEAN.
+
+        Raises:
+            ValueError: in case of parsing errors.
+        """
+
+        return DerObject.decode(self, der_encoded, strict)
+
+    def _decodeFromStream(self, s, strict):
+        """Decode a DER-encoded BOOLEAN from a file."""
+
+        # Fill up self.payload
+        DerObject._decodeFromStream(self, s, strict)
+
+        if len(self.payload) != 1:
+            raise ValueError("Invalid encoding for DER BOOLEAN: payload is not 1 byte")
+
+        if bord(self.payload[0]) == 0:
+            self.value = False
+        elif bord(self.payload[0]) == 0xFF:
+            self.value = True
+        else:
+            raise ValueError("Invalid payload for DER BOOLEAN")
 
 
 class DerSequence(DerObject):
@@ -384,7 +481,7 @@ class DerSequence(DerObject):
 
         """
 
-        def __init__(self, startSeq=None, implicit=None):
+        def __init__(self, startSeq=None, implicit=None, explicit=None):
                 """Initialize the DER object as a SEQUENCE.
 
                 :Parameters:
@@ -392,12 +489,19 @@ class DerSequence(DerObject):
                     A sequence whose element are either integers or
                     other DER objects.
 
-                  implicit : integer
-                    The IMPLICIT tag to use for the encoded object.
+                  implicit : integer or byte
+                    The IMPLICIT tag number (< 0x1F) to use for the encoded object.
                     It overrides the universal tag for SEQUENCE (16).
+                    It cannot be combined with the ``explicit`` parameter.
+                    By default, there is no IMPLICIT tag.
+
+                  explicit : integer or byte
+                    The EXPLICIT tag number (< 0x1F) to use for the encoded object.
+                    It cannot be combined with the ``implicit`` parameter.
+                    By default, there is no EXPLICIT tag.
                 """
 
-                DerObject.__init__(self, 0x10, b'', implicit, True)
+                DerObject.__init__(self, 0x10, b'', implicit, True, explicit)
                 if startSeq is None:
                     self._seq = []
                 else:
@@ -432,6 +536,10 @@ class DerSequence(DerObject):
 
         def append(self, item):
                 self._seq.append(item)
+                return self
+
+        def insert(self, index, item):
+                self._seq.insert(index, item)
                 return self
 
         def hasInts(self, only_non_negative=True):
@@ -527,7 +635,6 @@ class DerSequence(DerObject):
                         self._seq.append(p.data_since_bookmark())
                     else:
                         derInt = DerInteger()
-                        #import pdb; pdb.set_trace()
                         data = p.data_since_bookmark()
                         derInt.decode(data, strict=strict)
                         self._seq.append(derInt.value)
@@ -648,19 +755,25 @@ class DerObjectId(DerObject):
         binary string."""
 
         comps = [int(x) for x in self.value.split(".")]
+
         if len(comps) < 2:
             raise ValueError("Not a valid Object Identifier string")
-        self.payload = bchr(40*comps[0]+comps[1])
-        for v in comps[2:]:
-            if v == 0:
-                enc = [0]
-            else:
-                enc = []
-                while v:
-                    enc.insert(0, (v & 0x7F) | 0x80)
-                    v >>= 7
-                enc[-1] &= 0x7F
-            self.payload += b''.join([bchr(x) for x in enc])
+        if comps[0] > 2:
+            raise ValueError("First component must be 0, 1 or 2")
+        if comps[0] < 2 and comps[1] > 39:
+            raise ValueError("Second component must be 39 at most")
+
+        subcomps = [40 * comps[0] + comps[1]] + comps[2:]
+
+        encoding = []
+        for v in reversed(subcomps):
+            encoding.append(v & 0x7F)
+            v >>= 7
+            while v:
+                encoding.append((v & 0x7F) | 0x80)
+                v >>= 7
+
+        self.payload = b''.join([bchr(x) for x in reversed(encoding)])
         return DerObject.encode(self)
 
     def decode(self, der_encoded, strict=False):
@@ -687,15 +800,27 @@ class DerObjectId(DerObject):
 
         # Derive self.value from self.payload
         p = BytesIO_EOF(self.payload)
-        comps = [str(x) for x in divmod(p.read_byte(), 40)]
+
+        subcomps = []
         v = 0
         while p.remaining_data():
             c = p.read_byte()
-            v = v*128 + (c & 0x7F)
+            v = (v << 7) + (c & 0x7F)
             if not (c & 0x80):
-                comps.append(str(v))
+                subcomps.append(v)
                 v = 0
-        self.value = '.'.join(comps)
+
+        if len(subcomps) == 0:
+            raise ValueError("Empty payload")
+
+        if subcomps[0] < 40:
+            subcomps[:1] = [0, subcomps[0]]
+        elif subcomps[0] < 80:
+            subcomps[:1] = [1, subcomps[0] - 40]
+        else:
+            subcomps[:1] = [2, subcomps[0] - 80]
+
+        self.value = ".".join([str(x) for x in subcomps])
 
 
 class DerBitString(DerObject):
@@ -736,7 +861,7 @@ class DerBitString(DerObject):
             If not specified, the bit string is empty.
           implicit : integer
             The IMPLICIT tag to use for the encoded object.
-            It overrides the universal tag for OCTET STRING (3).
+            It overrides the universal tag for BIT STRING (3).
           explicit : integer
             The EXPLICIT tag to use for the encoded object.
         """

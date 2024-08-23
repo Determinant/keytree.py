@@ -63,10 +63,8 @@ class ChaCha20Poly1305Cipher(object):
 
         See also `new()` at the module level."""
 
-        self.nonce = _copy_bytes(None, None, nonce)
-
-        self._next = (self.update, self.encrypt, self.decrypt, self.digest,
-                      self.verify)
+        self._next = ("update", "encrypt", "decrypt", "digest",
+                      "verify")
 
         self._authenticator = Poly1305.new(key=key, nonce=nonce, cipher=ChaCha20)
 
@@ -94,7 +92,7 @@ class ChaCha20Poly1305Cipher(object):
             A piece of associated data. There are no restrictions on its size.
         """
 
-        if self.update not in self._next:
+        if "update" not in self._next:
             raise TypeError("update() method cannot be called")
 
         self._len_aad += len(data)
@@ -120,13 +118,13 @@ class ChaCha20Poly1305Cipher(object):
           Otherwise, ``None``.
         """
 
-        if self.encrypt not in self._next:
+        if "encrypt" not in self._next:
             raise TypeError("encrypt() method cannot be called")
 
         if self._status == _CipherStatus.PROCESSING_AUTH_DATA:
             self._pad_aad()
 
-        self._next = (self.encrypt, self.digest)
+        self._next = ("encrypt", "digest")
 
         result = self._cipher.encrypt(plaintext, output=output)
         self._len_ct += len(plaintext)
@@ -149,13 +147,13 @@ class ChaCha20Poly1305Cipher(object):
           Otherwise, ``None``.
         """
 
-        if self.decrypt not in self._next:
+        if "decrypt" not in self._next:
             raise TypeError("decrypt() method cannot be called")
 
         if self._status == _CipherStatus.PROCESSING_AUTH_DATA:
             self._pad_aad()
 
-        self._next = (self.decrypt, self.verify)
+        self._next = ("decrypt", "verify")
 
         self._len_ct += len(ciphertext)
         self._authenticator.update(ciphertext)
@@ -189,9 +187,9 @@ class ChaCha20Poly1305Cipher(object):
         :Return: the MAC tag, as 16 ``bytes``.
         """
 
-        if self.digest not in self._next:
+        if "digest" not in self._next:
             raise TypeError("digest() method cannot be called")
-        self._next = (self.digest,)
+        self._next = ("digest",)
 
         return self._compute_mac()
 
@@ -218,10 +216,10 @@ class ChaCha20Poly1305Cipher(object):
             or the key is incorrect.
         """
 
-        if self.verify not in self._next:
+        if "verify" not in self._next:
             raise TypeError("verify() cannot be called"
                             " when encrypting a message")
-        self._next = (self.verify,)
+        self._next = ("verify",)
 
         secret = get_random_bytes(16)
 
@@ -316,10 +314,10 @@ def new(**kwargs):
         nonce = get_random_bytes(12)
 
     if len(nonce) in (8, 12):
-        pass
+        chacha20_poly1305_nonce = nonce
     elif len(nonce) == 24:
         key = _HChaCha20(key, nonce[:16])
-        nonce = b'\x00\x00\x00\x00' + nonce[16:]
+        chacha20_poly1305_nonce = b'\x00\x00\x00\x00' + nonce[16:]
     else:
         raise ValueError("Nonce must be 8, 12 or 24 bytes long")
 
@@ -329,7 +327,9 @@ def new(**kwargs):
     if kwargs:
         raise TypeError("Unknown parameters: " + str(kwargs))
 
-    return ChaCha20Poly1305Cipher(key, nonce)
+    cipher = ChaCha20Poly1305Cipher(key, chacha20_poly1305_nonce)
+    cipher.nonce = _copy_bytes(None, None, nonce)
+    return cipher
 
 
 # Size of a key (in bytes)

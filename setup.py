@@ -8,5 +8,5 @@ setup(name='keytree.py',
       author_email='tederminant@gmail.com',
       license='MIT',
       scripts=['keytree.py'],
-      py_modules=['bech32'],
+      py_modules=['bech32', 'mnemonic', 'shamir'],
       install_requires=['ecdsa', 'base58', 'pysha3', 'pycryptodomex'])

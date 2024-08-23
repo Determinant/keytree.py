@@ -1,8 +1,0 @@
-../../../bin/keytree.py
-../__pycache__/bech32.cpython-39.pyc
-../bech32.py
-PKG-INFO
-SOURCES.txt
-dependency_links.txt
-requires.txt
-top_level.txt

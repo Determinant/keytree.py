@@ -1,6 +1,6 @@
-from typing import Union, Tuple, overload
+from typing import Union, Tuple, overload, Optional
 
-Buffer = Union[bytes, bytearray, memoryview]
+Buffer = bytes|bytearray|memoryview
 
 class ChaCha20Poly1305Cipher:
     nonce: bytes
@@ -22,7 +22,7 @@ class ChaCha20Poly1305Cipher:
     def encrypt_and_digest(self, plaintext: Buffer) -> Tuple[bytes, bytes]: ...
     def decrypt_and_verify(self, ciphertext: Buffer, received_mac_tag: Buffer) -> bytes: ...
 
-def new(key: Buffer, nonce: Buffer = ...) -> ChaCha20Poly1305Cipher: ...
+def new(key: Buffer, nonce: Optional[Buffer] = ...) -> ChaCha20Poly1305Cipher: ...
 
 block_size: int
 key_size: int
