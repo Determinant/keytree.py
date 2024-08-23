@@ -51,4 +51,4 @@ Security
 Portable Binary
 ---------------
 
-Use ``./keytree-0.1.2-x86_64.AppImage`` in place of ``./keytree.py``.
+Use ``./keytree-0.1.8-x86_64.AppImage`` in place of ``./keytree.py``.
