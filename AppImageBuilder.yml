@@ -7,8 +7,8 @@ script:
   - cp shamir.py  AppDir/usr/src
   - cp keytree.py  AppDir/usr/src
   - cp setup.py  AppDir/usr/src
-  - cp -r wordlist/  AppDir/usr/src
   - python3.10 -m pip install -t AppDir/usr/src/frozen_deps AppDir/usr/src
+  - cp -r wordlist/  AppDir/usr/src/frozen_deps
   - rm -rf AppDir/usr/src/frozen_deps/Cryptodome/SelfTest
 
 
