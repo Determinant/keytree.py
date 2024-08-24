@@ -36,10 +36,9 @@ Security
 
 - The dependencies should be safe (but do your own check!) because the part under ``frozen_deps/`` only contains:
 
-  - Some standard AES provided by ``Cryptodome``
+  - Some standard AES encryption and Keccak-256 hashing provided by ``Cryptodome``
   - Curve manipulation provided by ``ecdsa``
   - Base58 encoding provided by ``base58``
-  - SHA3 calcuation provided by ``pysha3``
 
   Whereas web3-specific modules are pretty short:
 

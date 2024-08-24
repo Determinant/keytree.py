@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.10
+#!/usr/bin/env python3
 # MIT License
 #
 # Copyright (c) 2020 Ted Yin <tederminant@gmail.com>
@@ -55,10 +55,10 @@ from ecdsa import SigningKey, VerifyingKey, SECP256k1
 from ecdsa.ecdsa import generator_secp256k1
 from ecdsa.ellipticcurve import INFINITY
 from base58 import b58encode, b58decode
-from sha3 import keccak_256
 from uuid import uuid4
 from Cryptodome.Cipher import AES
 from Cryptodome.Util import Counter
+from Cryptodome.Hash import keccak
 import shamir
 
 
@@ -206,7 +206,7 @@ class BIP32:
 
 def get_eth_addr(pk):
     pub_key = pk.to_string()
-    m = keccak_256()
+    m = keccak.new(digest_bits = 256) 
     m.update(pub_key)
     return m.hexdigest()[24:]
 
@@ -504,7 +504,7 @@ if __name__ == '__main__':
                     recovered = mgen.to_mnemonic(shamir256_combine(verify))
                     if words != recovered:
                         raise KeytreeError('Shamir sanity check failed: {} = {}'.format(case, recovered))
-                    print("checked {}".format(case))
+                    print("checked {}".format(','.join([str(i + 1) for i in case])))
             else:
                 shares = shamir256_split(seed, args.shamir_threshold, args.shamir_num)
                 shares = [mgen.to_mnemonic(share[:32]) + ' ' + mgen.to_mnemonic(share[32:]) for share in shares]
@@ -518,7 +518,8 @@ if __name__ == '__main__':
                     recovered = shamir256_combine(verify)
                     if seed != recovered:
                         raise KeytreeError('Shamir sanity check failed: {} = {}'.format(case, recovered.hex()))
-                    print("checked {}".format(case))
+                    print("checked {}".format(','.join([str(i + 1) for i in case])))
+
 
             for idx, share in enumerate(shares):
                 print("KEEP THIS PRIVATE (share) #{} {}".format(idx + 1, share))
