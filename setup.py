@@ -9,4 +9,4 @@ setup(name='keytree.py',
       license='MIT',
       scripts=['keytree.py'],
       py_modules=['bech32', 'mnemonic', 'shamir'],
-      install_requires=['ecdsa', 'base58', 'pysha3', 'pycryptodomex'])
+      install_requires=['ecdsa', 'base58', 'pycryptodomex'])
